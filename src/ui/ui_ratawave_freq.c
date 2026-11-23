@@ -262,8 +262,8 @@ void ui_ratawave_draw_sampling_tab(RataWaveState *st, Rectangle area, RataWorksp
         st->samp_f0_hz = 150.0; st->samp_fs_hz = 1000.0; st->samp_phase_rad = 0.0;
         ui_plot_view_reset(&st->view_sampling);
     }
-    if (ui_button((Rectangle){x + bw + 4.0f, y, bw, 24.0f}, "Near Nyquist", false, t)) {
-        st->samp_f0_hz = 460.0; st->samp_fs_hz = 1000.0; st->samp_phase_rad = 0.0;
+    if (ui_button((Rectangle){x + bw + 4.0f, y, bw, 24.0f}, "Exact Nyquist", false, t)) {
+        st->samp_f0_hz = 500.0; st->samp_fs_hz = 1000.0; st->samp_phase_rad = 0.7;
         ui_plot_view_reset(&st->view_sampling);
     }
     y += 28.0f;
@@ -296,26 +296,46 @@ void ui_ratawave_draw_sampling_tab(RataWaveState *st, Rectangle area, RataWorksp
         return;
     }
 
-    char r1[96], r2[96], r3[96], r4[96];
+    char r1[96], r2[96], r3[96], r4[96], r5[96];
     snprintf(r1, sizeof(r1), "Nyquist Freq (fs/2): %.4g Hz", res.nyquist_freq_hz);
     snprintf(r2, sizeof(r2), "Nyquist Rate (2*f0): %.4g Hz", res.nyquist_rate_hz);
     snprintf(r3, sizeof(r3), "Apparent Freq:       %.4g Hz", res.aliased_freq_hz);
-    snprintf(r4, sizeof(r4), "Aliased Phase: %.3g rad (%s)",
-             res.aliased_phase_rad, res.phase_negated ? "phi -> -phi" : "+phi");
+    if (!res.phase_recoverable) {
+        snprintf(r4, sizeof(r4), "Effective Amp: %.4g (= A*cos(phi))", res.effective_amp);
+        snprintf(r5, sizeof(r5), "Phase: NOT RECOVERABLE");
+    } else {
+        snprintf(r4, sizeof(r4), "Aliased Phase: %.3g rad (%s)",
+                 res.aliased_phase_rad, res.phase_negated ? "phi -> -phi" : "+phi");
+        r5[0] = '\0';
+    }
 
     ui_draw_text(t, "Nyquist Analysis:", x, y, 13.0f, t->accent);
     ui_draw_text(t, r1, x, y + 18.0f, 12.0f, t->text_primary);
     ui_draw_text(t, r2, x, y + 36.0f, 12.0f, t->text_primary);
-    ui_draw_text(t, r3, x, y + 54.0f, 12.0f, res.is_aliased ? t->danger : t->success);
-    ui_draw_text(t, r4, x, y + 72.0f, 12.0f, res.phase_negated ? t->warning : t->text_secondary);
+    ui_draw_text(t, r3, x, y + 54.0f, 12.0f,
+                 (res.is_aliased || !res.phase_recoverable) ? t->danger : t->success);
+    ui_draw_text(t, r4, x, y + 72.0f, 12.0f,
+                 (!res.phase_recoverable || res.phase_negated) ? t->warning : t->text_secondary);
+    if (r5[0] != '\0') {
+        ui_draw_text(t, r5, x, y + 90.0f, 12.0f, t->danger);
+    }
 
     ui_formula_card((Rectangle){right.x, right.y, right.width, 58.0f},
                     "Nyquist-Shannon Sampling & Reconstruction",
                     "f_{Nyq} = frac{f_s}{2},   x_{recon}(t) = \\sum_n x[n] sinc(f_s t - n)",
                     15.0f, t, ctx->frame_arena);
 
-    char banner[192];
-    if (res.is_aliased) {
+    char banner[220];
+    RataBannerLevel blevel = BANNER_OK;
+    if (!res.phase_recoverable) {
+        blevel = BANNER_WARN;
+        snprintf(banner, sizeof(banner),
+                 "NYQUIST BOUNDARY (%s): samples = %.4g * (%s)^n — phase not recoverable (effective amp A*cos(phi)).",
+                 (res.boundary == SAMP_BOUNDARY_NYQUIST) ? "f == fs/2 mod fs" : "f == 0 mod fs",
+                 res.effective_amp,
+                 (res.boundary == SAMP_BOUNDARY_NYQUIST) ? "-1" : "+1");
+    } else if (res.is_aliased) {
+        blevel = BANNER_ERROR;
         snprintf(banner, sizeof(banner),
                  "ALIASING: f0 = %.4g Hz > fs/2 = %.4g Hz -> %.4g Hz, phase = %.3g rad (%s)",
                  st->samp_f0_hz, res.nyquist_freq_hz, res.aliased_freq_hz,
@@ -326,7 +346,7 @@ void ui_ratawave_draw_sampling_tab(RataWaveState *st, Rectangle area, RataWorksp
                  st->samp_f0_hz, res.nyquist_freq_hz);
     }
     ui_draw_banner((Rectangle){right.x, right.y + 64.0f, right.width, 28.0f},
-                   banner, res.is_aliased ? BANNER_ERROR : BANNER_OK, t);
+                   banner, blevel, t);
 
     PlotTrace traces[4];
     size_t ntr = 0u;

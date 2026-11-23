@@ -455,11 +455,51 @@ static void test_sampling_and_aliasing(TestContext *t) {
     test_expect_true(t, is_aliased && !phase_neg, "aliased, not negated", __LINE__);
     test_expect_near(t, f_alias, 300.0, 1.0e-12, "f_alias=300", __LINE__);
 
-    /* 5. Well-sampled sinc reconstruction matches analog signal cleanly. */
+    /* 5. Nyquist boundary: sine (phi = -pi/2) at exact Nyquist f0 = fs/2 samples to all zeros. */
+    RataSamplingConfig cfg_nyq_sin = {500.0, 1.0, -RATA_HALF_PI, 1000.0, 0.01, 101u};
+    RataSamplingResult res_nyq_sin;
+    test_expect_true(t, dsp_sampling_simulate(&cfg_nyq_sin, &res_nyq_sin, &a) == RATA_OK,
+                     "nyq sin sim", __LINE__);
+    test_expect_true(t, !res_nyq_sin.phase_recoverable && res_nyq_sin.boundary == SAMP_BOUNDARY_NYQUIST,
+                     "nyq sin boundary", __LINE__);
+    test_expect_true(t, !res_nyq_sin.phase_negated, "nyq sin not phase_negated", __LINE__);
+    test_expect_near(t, res_nyq_sin.effective_amp, 0.0, 1.0e-12, "nyq sin eff_amp==0", __LINE__);
+    for (size_t n = 0u; n < res_nyq_sin.sample_len; ++n) {
+        test_expect_near(t, res_nyq_sin.x_samples[n], 0.0, 1.0e-12, "nyq sin sample==0", __LINE__);
+    }
+
+    /* 6. Nyquist boundary: cosine with phi = 0.7 at exact Nyquist gives A*cos(0.7)*(-1)^n. */
+    RataSamplingConfig cfg_nyq_cos = {500.0, 1.0, 0.7, 1000.0, 0.01, 101u};
+    RataSamplingResult res_nyq_cos;
+    test_expect_true(t, dsp_sampling_simulate(&cfg_nyq_cos, &res_nyq_cos, &a) == RATA_OK,
+                     "nyq cos 0.7 sim", __LINE__);
+    test_expect_true(t, !res_nyq_cos.phase_recoverable && res_nyq_cos.boundary == SAMP_BOUNDARY_NYQUIST,
+                     "nyq cos boundary", __LINE__);
+    test_expect_near(t, res_nyq_cos.effective_amp, cos(0.7), 1.0e-12, "nyq cos eff_amp", __LINE__);
+    for (size_t n = 0u; n < res_nyq_cos.sample_len; ++n) {
+        double expected = cos(0.7) * (((n % 2u) == 0u) ? 1.0 : -1.0);
+        test_expect_near(t, res_nyq_cos.x_samples[n], expected, 1.0e-12, "nyq cos alt sign", __LINE__);
+    }
+
+    /* 7. DC-fold boundary: cosine at f0 = fs gives constant cos(phi), phase not recoverable. */
+    RataSamplingConfig cfg_fs_fold = {1000.0, 1.0, 0.7, 1000.0, 0.01, 101u};
+    RataSamplingResult res_fs_fold;
+    test_expect_true(t, dsp_sampling_simulate(&cfg_fs_fold, &res_fs_fold, &a) == RATA_OK,
+                     "f=fs sim", __LINE__);
+    test_expect_true(t, !res_fs_fold.phase_recoverable && res_fs_fold.boundary == SAMP_BOUNDARY_DC,
+                     "f=fs boundary", __LINE__);
+    test_expect_true(t, res_fs_fold.is_aliased, "f=fs is aliased", __LINE__);
+    test_expect_near(t, res_fs_fold.aliased_freq_hz, 0.0, 1.0e-12, "f=fs alias freq==0", __LINE__);
+    test_expect_near(t, res_fs_fold.effective_amp, cos(0.7), 1.0e-12, "f=fs eff_amp", __LINE__);
+    for (size_t n = 0u; n < res_fs_fold.sample_len; ++n) {
+        test_expect_near(t, res_fs_fold.x_samples[n], cos(0.7), 1.0e-12, "f=fs constant", __LINE__);
+    }
+
+    /* 8. Well-sampled sinc reconstruction matches analog signal cleanly. */
     RataSamplingConfig cfg = {100.0, 1.0, 0.25, 1000.0, 0.02, 201u};
     RataSamplingResult res;
     test_expect_true(t, dsp_sampling_simulate(&cfg, &res, &a) == RATA_OK, "sim ok", __LINE__);
-    test_expect_true(t, !res.is_aliased, "not aliased", __LINE__);
+    test_expect_true(t, !res.is_aliased && res.phase_recoverable, "not aliased", __LINE__);
     test_expect_near(t, res.nyquist_freq_hz, 500.0, 1.0e-12, "nyq=500", __LINE__);
     for (size_t i = 20u; i < 180u; i += 10u) {
         test_expect_near(t, res.x_recon_sinc[i], res.x_analog[i], 2.0e-2, "sinc recon", __LINE__);

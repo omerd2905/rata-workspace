@@ -64,6 +64,7 @@ void ui_theme_load_font(RataTheme *t) {
     }
     static const int extra_cps[] = {
         0x00B0, 0x00B1, 0x00B5, 0x00D7, 0x00F7, /* deg, pm, mu, times, div */
+        0x2013, 0x2014,                         /* en-dash, em-dash */
         0x2192, 0x2211, 0x2212, 0x221A, 0x221E, /* arrow, sum, minus, sqrt, infty */
         0x2220, 0x222B, 0x2248, 0x2260, 0x2264, 0x2265 /* angle, int, approx, ne, le, ge */
     };
