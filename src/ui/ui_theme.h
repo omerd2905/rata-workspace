@@ -1,11 +1,14 @@
 #ifndef RATA_UI_THEME_H
 #define RATA_UI_THEME_H
 
+#include <stdbool.h>
+
 #include "raylib.h"
 
 #define RATA_TRACE_PALETTE_COUNT 6
 
-/* Shared dark engineering workstation palette. Passed explicitly (no hidden globals). */
+/* Shared dark engineering workstation palette and loaded UI font.
+ * Passed explicitly (no hidden globals). */
 typedef struct RataTheme {
     Color bg_app;
     Color bg_sidebar;
@@ -27,6 +30,8 @@ typedef struct RataTheme {
     Color warning;
     Color danger;
     Color traces[RATA_TRACE_PALETTE_COUNT];
+    Font font;
+    bool has_custom_font;
 } RataTheme;
 
 typedef enum RataBannerLevel {
@@ -37,7 +42,17 @@ typedef enum RataBannerLevel {
 } RataBannerLevel;
 
 void ui_theme_init_default(RataTheme *theme);
+
+/* Loads embedded OFL JetBrains Mono font (ASCII + Greek + math codepoints) into GPU memory.
+ * Must be called after InitWindow(). Caller must call ui_theme_unload_font() before CloseWindow(). */
+void ui_theme_load_font(RataTheme *theme);
+void ui_theme_unload_font(RataTheme *theme);
+
 void ui_theme_apply_raygui(const RataTheme *theme);
+
+/* Crisp text drawing/measurement using loaded JetBrains Mono font (fallback to default font). */
+void ui_draw_text(const RataTheme *theme, const char *text, float x, float y, float size, Color color);
+int ui_measure_text(const RataTheme *theme, const char *text, float size);
 
 void ui_draw_panel(Rectangle r, const RataTheme *theme);
 void ui_draw_section_title(Rectangle r, const char *title, const RataTheme *theme);

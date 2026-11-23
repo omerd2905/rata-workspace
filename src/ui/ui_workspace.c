@@ -119,16 +119,16 @@ void ui_workspace_draw_coming_soon(const RataWorkspaceEntry *entry,
 
     char badge[48];
     snprintf(badge, sizeof(badge), "PHASE %d  |  COMING SOON", entry->phase_num);
-    DrawText(badge, (int)card.x + 24, (int)card.y + 22, 12, theme->warning);
+    ui_draw_text(theme, badge, card.x + 24.0f, card.y + 22.0f, 13.0f, theme->warning);
 
-    DrawText(entry->name, (int)card.x + 24, (int)card.y + 44, 28, theme->text_primary);
-    DrawText(entry->subtitle, (int)card.x + 24, (int)card.y + 78, 15, theme->accent);
+    ui_draw_text(theme, entry->name, card.x + 24.0f, card.y + 44.0f, 28.0f, theme->text_primary);
+    ui_draw_text(theme, entry->subtitle, card.x + 24.0f, card.y + 78.0f, 16.0f, theme->accent);
 
     /* Wrap summary text neatly across lines. */
     const char *s = entry->planned_summary;
-    int y = (int)card.y + 112;
+    float y = card.y + 112.0f;
     int max_w = (int)card.width - 48;
-    while (*s != '\0' && y < (int)(card.y + card.height - 20.0f)) {
+    while (*s != '\0' && y < card.y + card.height - 20.0f) {
         char line[160];
         size_t len = 0u;
         size_t last_sp = 0u;
@@ -138,7 +138,7 @@ void ui_workspace_draw_coming_soon(const RataWorkspaceEntry *entry,
             if (s[len] == ' ') {
                 last_sp = len;
             }
-            if (MeasureText(line, 13) > max_w) {
+            if (ui_measure_text(theme, line, 14.0f) > max_w) {
                 break;
             }
             len++;
@@ -150,8 +150,8 @@ void ui_workspace_draw_coming_soon(const RataWorkspaceEntry *entry,
             break;
         }
         line[len] = '\0';
-        DrawText(line, (int)card.x + 24, y, 13, theme->text_secondary);
-        y += 20;
+        ui_draw_text(theme, line, card.x + 24.0f, y, 14.0f, theme->text_secondary);
+        y += 20.0f;
         s += len;
         while (*s == ' ') {
             s++;

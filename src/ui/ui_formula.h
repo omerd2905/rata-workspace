@@ -13,6 +13,7 @@ void ui_formula_draw(Rectangle bounds,
                      const char *markup,
                      float font_size,
                      Color color,
+                     const RataTheme *theme,
                      RataArena *scratch);
 
 /* Convenience panel wrapper drawing a titled formula card. */

@@ -152,7 +152,7 @@ static void draw_signal_tab(RataWaveState *st, Rectangle area, RataWorkspaceCtx 
         }
         y += 50.0f;
 
-        DrawText("Quick Presets:", (int)x, (int)y, 11, t->text_muted);
+        ui_draw_text(t, "Quick Presets:", x, y, 12.0f, t->text_muted);
         y += 16.0f;
         float bw = (w - 4.0f) * 0.5f;
         if (ui_button((Rectangle){x, y, bw, 24.0f}, "2-Tone Sin", false, t)) {
@@ -281,16 +281,16 @@ static void draw_signal_tab(RataWaveState *st, Rectangle area, RataWorkspaceCtx 
         RataSignalStats stats;
         dsp_signal_stats(&sig, &stats);
         char line1[96], line2[96], line3[96];
-        snprintf(line1, sizeof(line1), "Energy E = %.4g   Avg Power P = %.4g",
+        snprintf(line1, sizeof(line1), "Energy E = %.4g  Power = %.4g",
                  stats.energy, stats.avg_power);
-        snprintf(line2, sizeof(line2), "Mean = %.4g   RMS = %.4g",
+        snprintf(line2, sizeof(line2), "Mean = %.4g  RMS = %.4g",
                  stats.mean, stats.rms);
-        snprintf(line3, sizeof(line3), "Min = %.4g   Max = %.4g   T_s = %.3g ms",
+        snprintf(line3, sizeof(line3), "Min = %.4g  Max = %.4g  Ts = %.3g ms",
                  stats.min_val, stats.max_val, 1000.0 / sig.fs);
-        DrawText("Signal Metrics:", (int)x, (int)y, 12, t->accent);
-        DrawText(line1, (int)x, (int)y + 18, 11, t->text_primary);
-        DrawText(line2, (int)x, (int)y + 34, 11, t->text_primary);
-        DrawText(line3, (int)x, (int)y + 50, 11, t->text_secondary);
+        ui_draw_text(t, "Signal Metrics:", x, y, 13.0f, t->accent);
+        ui_draw_text(t, line1, x, y + 18.0f, 12.0f, t->text_primary);
+        ui_draw_text(t, line2, x, y + 34.0f, 12.0f, t->text_primary);
+        ui_draw_text(t, line3, x, y + 50.0f, 12.0f, t->text_secondary);
 
         double *n_axis = (double *)rata_arena_alloc(ctx->frame_arena,
                                                     sig.len * sizeof(double), 8u);
@@ -430,7 +430,7 @@ static void draw_conv_tab(RataWaveState *st, Rectangle area, RataWorkspaceCtx *c
     if (st->conv_n_shift > y_max_n) { st->conv_n_shift = y_max_n; }
 
     /* Playback animation controls */
-    DrawText("Flip-and-Shift Playback:", (int)x, (int)y, 12, t->accent);
+    ui_draw_text(t, "Flip-and-Shift Playback:", x, y, 13.0f, t->accent);
     y += 18.0f;
     float pbw = (w - 8.0f) / 3.0f;
     if (ui_button((Rectangle){x, y, pbw, 26.0f},
@@ -478,8 +478,8 @@ static void draw_conv_tab(RataWaveState *st, Rectangle area, RataWorkspaceCtx *c
 
     char cur_val[96];
     snprintf(cur_val, sizeof(cur_val), "y[%d] = %.6g", st->conv_n_shift, step.sum);
-    DrawText("Current Output Sample:", (int)x, (int)y, 11, t->text_muted);
-    DrawText(cur_val, (int)x, (int)y + 16, 18, t->success);
+    ui_draw_text(t, "Current Output Sample:", x, y, 12.0f, t->text_muted);
+    ui_draw_text(t, cur_val, x, y + 17.0f, 19.0f, t->success);
 
     /* Right side: formula card + top flip/shift plot + bottom output y[n] plot */
     char fstr[128];

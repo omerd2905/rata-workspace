@@ -232,7 +232,11 @@ static void draw_vector_symbol(FormulaSymKind sym, float x, float baseline_y, fl
     }
 }
 
-static FormulaBox measure_node(const FormulaTree *tree, int32_t id, float sz, size_t depth) {
+static FormulaBox measure_node(const FormulaTree *tree,
+                               int32_t id,
+                               float sz,
+                               const RataTheme *theme,
+                               size_t depth) {
     FormulaBox box = {0.0f, sz * 0.8f, sz * 0.2f};
     if (id < 0 || (size_t)id >= tree->node_count || depth > RATA_FORMULA_MAX_DEPTH + 4u) {
         return box;
@@ -245,7 +249,7 @@ static FormulaBox measure_node(const FormulaTree *tree, int32_t id, float sz, si
             float max_desc = sz * 0.20f;
             int32_t ch = nd->first_child;
             while (ch >= 0) {
-                FormulaBox cb = measure_node(tree, ch, sz, depth + 1u);
+                FormulaBox cb = measure_node(tree, ch, sz, theme, depth + 1u);
                 total_w += cb.w;
                 if (cb.asc > max_asc) {
                     max_asc = cb.asc;
@@ -261,11 +265,8 @@ static FormulaBox measure_node(const FormulaTree *tree, int32_t id, float sz, si
             return box;
         }
         case FNODE_TEXT: {
-            int isz = (int)(sz + 0.5f);
-            if (isz < 8) {
-                isz = 8;
-            }
-            box.w = (float)MeasureText(nd->text, isz);
+            float fsz = (sz < 9.0f) ? 9.0f : sz;
+            box.w = (float)ui_measure_text(theme, nd->text, fsz);
             box.asc = sz * 0.82f;
             box.desc = sz * 0.18f;
             return box;
@@ -281,8 +282,8 @@ static FormulaBox measure_node(const FormulaTree *tree, int32_t id, float sz, si
             if (sub_sz < 10.0f) {
                 sub_sz = 10.0f;
             }
-            FormulaBox num = measure_node(tree, nd->child_a, sub_sz, depth + 1u);
-            FormulaBox den = measure_node(tree, nd->child_b, sub_sz, depth + 1u);
+            FormulaBox num = measure_node(tree, nd->child_a, sub_sz, theme, depth + 1u);
+            FormulaBox den = measure_node(tree, nd->child_b, sub_sz, theme, depth + 1u);
             float max_w = (num.w > den.w) ? num.w : den.w;
             float bar_off = sz * 0.32f;
             box.w = max_w + 10.0f;
@@ -295,7 +296,7 @@ static FormulaBox measure_node(const FormulaTree *tree, int32_t id, float sz, si
         }
 
         case FNODE_SQRT: {
-            FormulaBox inner = measure_node(tree, nd->child_a, sz, depth + 1u);
+            FormulaBox inner = measure_node(tree, nd->child_a, sz, theme, depth + 1u);
             box.w = inner.w + sz * 0.70f + 4.0f;
             box.asc = inner.asc + 4.0f;
             box.desc = inner.desc + 1.0f;
@@ -307,14 +308,14 @@ static FormulaBox measure_node(const FormulaTree *tree, int32_t id, float sz, si
             if (sc_sz < 9.0f) {
                 sc_sz = 9.0f;
             }
-            FormulaBox base = measure_node(tree, nd->child_a, sz, depth + 1u);
+            FormulaBox base = measure_node(tree, nd->child_a, sz, theme, depth + 1u);
             FormulaBox sub = {0.0f, 0.0f, 0.0f};
             FormulaBox sup = {0.0f, 0.0f, 0.0f};
             if (nd->child_b >= 0) {
-                sub = measure_node(tree, nd->child_b, sc_sz, depth + 1u);
+                sub = measure_node(tree, nd->child_b, sc_sz, theme, depth + 1u);
             }
             if (nd->child_c >= 0) {
-                sup = measure_node(tree, nd->child_c, sc_sz, depth + 1u);
+                sup = measure_node(tree, nd->child_c, sc_sz, theme, depth + 1u);
             }
             float script_w = (sub.w > sup.w) ? sub.w : sup.w;
             box.w = base.w + script_w + 2.0f;
@@ -345,6 +346,7 @@ static void draw_node(const FormulaTree *tree,
                       float baseline_y,
                       float sz,
                       Color color,
+                      const RataTheme *theme,
                       size_t depth) {
     if (id < 0 || (size_t)id >= tree->node_count || depth > RATA_FORMULA_MAX_DEPTH + 4u) {
         return;
@@ -355,19 +357,16 @@ static void draw_node(const FormulaTree *tree,
             float cx = x;
             int32_t ch = nd->first_child;
             while (ch >= 0) {
-                FormulaBox cb = measure_node(tree, ch, sz, depth + 1u);
-                draw_node(tree, ch, cx, baseline_y, sz, color, depth + 1u);
+                FormulaBox cb = measure_node(tree, ch, sz, theme, depth + 1u);
+                draw_node(tree, ch, cx, baseline_y, sz, color, theme, depth + 1u);
                 cx += cb.w;
                 ch = tree->nodes[ch].next_sibling;
             }
             break;
         }
         case FNODE_TEXT: {
-            int isz = (int)(sz + 0.5f);
-            if (isz < 8) {
-                isz = 8;
-            }
-            DrawText(nd->text, (int)x, (int)(baseline_y - sz * 0.82f), isz, color);
+            float fsz = (sz < 9.0f) ? 9.0f : sz;
+            ui_draw_text(theme, nd->text, x, baseline_y - sz * 0.82f, fsz, color);
             break;
         }
         case FNODE_SYMBOL:
@@ -379,27 +378,27 @@ static void draw_node(const FormulaTree *tree,
             if (sub_sz < 10.0f) {
                 sub_sz = 10.0f;
             }
-            FormulaBox num = measure_node(tree, nd->child_a, sub_sz, depth + 1u);
-            FormulaBox den = measure_node(tree, nd->child_b, sub_sz, depth + 1u);
+            FormulaBox num = measure_node(tree, nd->child_a, sub_sz, theme, depth + 1u);
+            FormulaBox den = measure_node(tree, nd->child_b, sub_sz, theme, depth + 1u);
             float max_w = (num.w > den.w) ? num.w : den.w;
             float total_w = max_w + 10.0f;
             float bar_y = baseline_y - sz * 0.32f;
 
             float num_x = x + (total_w - num.w) * 0.5f;
             float num_base = bar_y - 3.0f - num.desc;
-            draw_node(tree, nd->child_a, num_x, num_base, sub_sz, color, depth + 1u);
+            draw_node(tree, nd->child_a, num_x, num_base, sub_sz, color, theme, depth + 1u);
 
             DrawLineEx((Vector2){x + 2.0f, bar_y},
                        (Vector2){x + total_w - 2.0f, bar_y}, 1.5f, color);
 
             float den_x = x + (total_w - den.w) * 0.5f;
             float den_base = bar_y + 4.0f + den.asc;
-            draw_node(tree, nd->child_b, den_x, den_base, sub_sz, color, depth + 1u);
+            draw_node(tree, nd->child_b, den_x, den_base, sub_sz, color, theme, depth + 1u);
             break;
         }
 
         case FNODE_SQRT: {
-            FormulaBox inner = measure_node(tree, nd->child_a, sz, depth + 1u);
+            FormulaBox inner = measure_node(tree, nd->child_a, sz, theme, depth + 1u);
             float rad_w = sz * 0.70f;
             float top_y = baseline_y - inner.asc - 3.0f;
             float bot_y = baseline_y + inner.desc * 0.5f;
@@ -410,7 +409,7 @@ static void draw_node(const FormulaTree *tree,
             DrawLineEx((Vector2){x + rad_w * 0.85f, top_y},
                        (Vector2){x + rad_w + inner.w + 3.0f, top_y}, 1.5f, color);
 
-            draw_node(tree, nd->child_a, x + rad_w + 1.0f, baseline_y, sz, color, depth + 1u);
+            draw_node(tree, nd->child_a, x + rad_w + 1.0f, baseline_y, sz, color, theme, depth + 1u);
             break;
         }
 
@@ -419,14 +418,14 @@ static void draw_node(const FormulaTree *tree,
             if (sc_sz < 9.0f) {
                 sc_sz = 9.0f;
             }
-            FormulaBox base = measure_node(tree, nd->child_a, sz, depth + 1u);
-            draw_node(tree, nd->child_a, x, baseline_y, sz, color, depth + 1u);
+            FormulaBox base = measure_node(tree, nd->child_a, sz, theme, depth + 1u);
+            draw_node(tree, nd->child_a, x, baseline_y, sz, color, theme, depth + 1u);
             float sx = x + base.w + 1.0f;
             if (nd->child_c >= 0) {
-                draw_node(tree, nd->child_c, sx, baseline_y - sz * 0.44f, sc_sz, color, depth + 1u);
+                draw_node(tree, nd->child_c, sx, baseline_y - sz * 0.44f, sc_sz, color, theme, depth + 1u);
             }
             if (nd->child_b >= 0) {
-                draw_node(tree, nd->child_b, sx, baseline_y + sz * 0.28f, sc_sz, color, depth + 1u);
+                draw_node(tree, nd->child_b, sx, baseline_y + sz * 0.28f, sc_sz, color, theme, depth + 1u);
             }
             break;
         }
@@ -439,6 +438,7 @@ void ui_formula_draw(Rectangle bounds,
                      const char *markup,
                      float font_size,
                      Color color,
+                     const RataTheme *theme,
                      RataArena *scratch) {
     if (markup == NULL || scratch == NULL) {
         return;
@@ -448,18 +448,17 @@ void ui_formula_draw(Rectangle bounds,
     size_t mark = rata_arena_mark(scratch);
     FormulaTree tree;
     if (formula_parse_cstr(markup, &tree, scratch) == RATA_OK) {
-        FormulaBox box = measure_node(&tree, tree.root, font_size, 0u);
+        FormulaBox box = measure_node(&tree, tree.root, font_size, theme, 0u);
         float total_h = box.asc + box.desc;
         float start_x = bounds.x + 8.0f;
         if (box.w + 16.0f < bounds.width) {
             start_x = bounds.x + (bounds.width - box.w) * 0.5f;
         }
         float baseline_y = bounds.y + (bounds.height - total_h) * 0.5f + box.asc;
-        draw_node(&tree, tree.root, start_x, baseline_y, font_size, color, 0u);
+        draw_node(&tree, tree.root, start_x, baseline_y, font_size, color, theme, 0u);
     } else {
-        DrawText(markup, (int)bounds.x + 8,
-                 (int)(bounds.y + (bounds.height - font_size) * 0.5f),
-                 (int)font_size, color);
+        ui_draw_text(theme, markup, bounds.x + 8.0f,
+                     bounds.y + (bounds.height - font_size) * 0.5f, font_size, color);
     }
     rata_arena_restore(scratch, mark);
     EndScissorMode();
@@ -478,10 +477,10 @@ void ui_formula_card(Rectangle bounds,
     DrawRectangleLinesEx(bounds, 1.0f, theme->border);
     float top_off = 0.0f;
     if (caption != NULL && caption[0] != '\0') {
-        DrawText(caption, (int)bounds.x + 8, (int)bounds.y + 4, 11, theme->text_muted);
-        top_off = 14.0f;
+        ui_draw_text(theme, caption, bounds.x + 8.0f, bounds.y + 4.0f, 12.0f, theme->text_muted);
+        top_off = 15.0f;
     }
     Rectangle inner = {bounds.x + 2.0f, bounds.y + top_off,
                        bounds.width - 4.0f, bounds.height - top_off - 2.0f};
-    ui_formula_draw(inner, markup, font_size, theme->text_primary, scratch);
+    ui_formula_draw(inner, markup, font_size, theme->text_primary, theme, scratch);
 }

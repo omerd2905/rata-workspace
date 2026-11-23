@@ -16,9 +16,9 @@ bool ui_text_field(Rectangle bounds,
     if (buf == NULL || buf_size <= 1 || focus == NULL || theme == NULL) {
         return false;
     }
-    float label_h = (label != NULL && label[0] != '\0') ? 16.0f : 0.0f;
+    float label_h = (label != NULL && label[0] != '\0') ? 17.0f : 0.0f;
     if (label_h > 0.0f) {
-        DrawText(label, (int)bounds.x, (int)bounds.y, 12, theme->text_secondary);
+        ui_draw_text(theme, label, bounds.x, bounds.y, 13.0f, theme->text_secondary);
     }
 
     Rectangle box = {bounds.x, bounds.y + label_h, bounds.width, bounds.height - label_h};
@@ -67,7 +67,7 @@ bool ui_slider_row(Rectangle bounds,
     } else {
         snprintf(hdr, sizeof(hdr), "%s: %.4g", (label != NULL) ? label : "", *val);
     }
-    DrawText(hdr, (int)bounds.x, (int)bounds.y, 12, theme->text_secondary);
+    ui_draw_text(theme, hdr, bounds.x, bounds.y, 13.0f, theme->text_secondary);
 
     Rectangle srec = {bounds.x, bounds.y + 16.0f, bounds.width, bounds.height - 18.0f};
     if (srec.height < 16.0f) {
@@ -129,12 +129,13 @@ bool ui_button(Rectangle bounds, const char *label, bool active, const RataTheme
     DrawRectangleRec(bounds, bg);
     DrawRectangleLinesEx(bounds, active ? 1.5f : 1.0f, border);
 
-    int tw = MeasureText(label, 12);
-    int tx = (int)(bounds.x + (bounds.width - (float)tw) * 0.5f);
-    int ty = (int)(bounds.y + (bounds.height - 12.0f) * 0.5f);
+    float fsz = 13.0f;
+    int tw = ui_measure_text(theme, label, fsz);
+    float tx = bounds.x + (bounds.width - (float)tw) * 0.5f;
+    float ty = bounds.y + (bounds.height - fsz) * 0.5f;
     BeginScissorMode((int)bounds.x + 2, (int)bounds.y + 1,
                      (int)bounds.width - 4, (int)bounds.height - 2);
-    DrawText(label, tx, ty, 12, text_col);
+    ui_draw_text(theme, label, tx, ty, fsz, text_col);
     EndScissorMode();
     return clicked;
 }
