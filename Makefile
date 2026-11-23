@@ -1,7 +1,9 @@
 # Rata Workspace — Plain GNU Makefile
 # Works with gcc on NixOS/Linux and MinGW gcc on Windows 11 (native MSYS2 or cross-compile).
 
-CC ?= gcc
+ifeq ($(origin CC),default)
+  CC := gcc
+endif
 PKG_CONFIG ?= pkg-config
 BUILD ?= debug
 

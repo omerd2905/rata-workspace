@@ -45,13 +45,15 @@ RAYLIB_DIR=/path/to/raylib-5.5_linux_amd64 make BUILD=release
 In an **MSYS2 MinGW 64-bit** shell:
 
 ```sh
-pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-pkgconf mingw-w64-x86_64-raylib make
-make BUILD=release
+pacman -S mingw-w64-x86_64-gcc make curl unzip
+curl -fsSL -o raylib.zip https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_win64_mingw-w64.zip
+unzip -q raylib.zip -d deps
+RAYLIB_DIR=deps/raylib-5.5_win64_mingw-w64 make BUILD=release
 make BUILD=release test fuzz-test
 ./build/windows-release/rata-workspace.exe
 ```
 
-If using standalone MinGW without `pkg-config`, pass `RAYLIB_DIR=/path/to/raylib-5.5_win64_mingw-w64`.
+Or pass `RAYLIB_DIR=/path/to/raylib-5.5_win64_mingw-w64` if raylib is already installed elsewhere.
 
 ## Architecture & Portability
 

@@ -56,21 +56,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup MSYS2 MinGW64 toolchain and raylib
+      - name: Setup MSYS2 MinGW64 toolchain
         uses: msys2/setup-msys2@v2
         with:
           msystem: MINGW64
           update: true
           install: >-
             mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-pkgconf
-            mingw-w64-x86_64-raylib
             make
+            curl
+            unzip
+
+      - name: Fetch raylib 5.5 (Windows MinGW-w64)
+        run: |
+          mkdir -p "$RUNNER_TEMP/raylib-dl"
+          curl -fsSL -o "$RUNNER_TEMP/raylib.zip" \
+            https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_win64_mingw-w64.zip
+          unzip -q -o "$RUNNER_TEMP/raylib.zip" -d "$RUNNER_TEMP/raylib-dl"
 
       - name: Check layering rules
         run: make check-layering
 
       - name: Build desktop app and run tests + fuzz harnesses
         run: |
-          make BUILD=release app
+          RAYLIB_DIR="$(cygpath -m "$RUNNER_TEMP/raylib-dl/raylib-5.5_win64_mingw-w64")"
+          RAYLIB_DIR="$RAYLIB_DIR" make BUILD=release app
           make BUILD=release test fuzz-test
