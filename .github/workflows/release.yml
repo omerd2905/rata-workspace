@@ -1,0 +1,235 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+env:
+  RAYLIB_LINUX_SHA256: "3d95ef03d5b38dfa55c0a16ca122d382134b078f0e5b270b52fe7eae0549c000"
+  RAYLIB_WIN64_SHA256: "fe8feda1b92fc02826e2d19c631d648fd0563b93b144893fe18140e9fe4fb6fd"
+
+jobs:
+  verify:
+    name: Verify Tag, Full Tests, Fuzz, & UI Smoke
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches VERSION file
+        id: ver
+        run: |
+          VERSION="$(tr -d ' \r\n' < VERSION)"
+          TAG="${GITHUB_REF_NAME}"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "ERROR: tag '$TAG' does not match VERSION '$VERSION'!"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Install X11, OpenGL, and Xvfb libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev \
+            libgl1-mesa-dri \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev \
+            xvfb
+
+      - name: Fetch and SHA-256 verify raylib 5.5 (Linux amd64)
+        run: |
+          mkdir -p "$RUNNER_TEMP/raylib"
+          curl -fsSL -o "$RUNNER_TEMP/raylib-5.5_linux_amd64.tar.gz" \
+            https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_linux_amd64.tar.gz
+          printf '%s  %s\n' "$RAYLIB_LINUX_SHA256" "$RUNNER_TEMP/raylib-5.5_linux_amd64.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/raylib-5.5_linux_amd64.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/raylib"
+
+      - name: Run layering, unit tests, fuzz harnesses, and Xvfb UI smoke under ASan + UBSan
+        run: |
+          make check
+          RAYLIB_DIR="$RUNNER_TEMP/raylib" make BUILD=debug ui-smoke
+
+  build-linux:
+    name: Package Linux Release Tarball
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install X11/OpenGL dev libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libgl1-mesa-dev \
+            libxcursor-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxi-dev
+
+      - name: Fetch and SHA-256 verify raylib 5.5 (Linux amd64)
+        run: |
+          mkdir -p "$RUNNER_TEMP/raylib"
+          curl -fsSL -o "$RUNNER_TEMP/raylib-5.5_linux_amd64.tar.gz" \
+            https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_linux_amd64.tar.gz
+          printf '%s  %s\n' "$RAYLIB_LINUX_SHA256" "$RUNNER_TEMP/raylib-5.5_linux_amd64.tar.gz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/raylib-5.5_linux_amd64.tar.gz" --strip-components=1 -C "$RUNNER_TEMP/raylib"
+
+      - name: Build static-raylib release binary and package tarball
+        run: |
+          VERSION="${{ needs.verify.outputs.version }}"
+          RAYLIB_DIR="$RUNNER_TEMP/raylib" RAYLIB_STATIC=1 make BUILD=release app test
+          ./build/linux-release/rata-workspace --version | grep -F "Rata Workspace $VERSION"
+          ! ldd ./build/linux-release/rata-workspace | grep -i libraylib
+
+          PKG_NAME="rata-workspace-v${VERSION}-linux-x86_64"
+          STAGE="$RUNNER_TEMP/$PKG_NAME"
+          RAYLIB_DIR="$RUNNER_TEMP/raylib" RAYLIB_STATIC=1 make BUILD=release install PREFIX="$STAGE"
+          install -m 644 "$RUNNER_TEMP/raylib/LICENSE" "$STAGE/share/licenses/rata-workspace/raylib-LICENSE.txt"
+          install -m 644 packaging/linux/tarball.mk "$STAGE/Makefile"
+          install -m 644 CHANGELOG.md "$STAGE/CHANGELOG.md"
+
+          # Verify tarball install/uninstall flow cleanly
+          make -C "$STAGE" install PREFIX="$RUNNER_TEMP/verify-install"
+          "$RUNNER_TEMP/verify-install/bin/rata-workspace" --version
+          make -C "$STAGE" uninstall PREFIX="$RUNNER_TEMP/verify-install"
+
+          mkdir -p build/release-artifacts
+          tar -C "$RUNNER_TEMP" -czf "build/release-artifacts/${PKG_NAME}.tar.gz" "$PKG_NAME"
+
+      - name: Upload Linux release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-linux
+          path: build/release-artifacts/*.tar.gz
+
+  build-windows:
+    name: Package Windows 11 Installer & Portable Zip
+    needs: verify
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup MSYS2 MinGW64 toolchain
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-binutils
+            make
+            curl
+            unzip
+            zip
+
+      - name: Fetch and SHA-256 verify raylib 5.5 (Windows MinGW-w64)
+        run: |
+          mkdir -p "$RUNNER_TEMP/raylib-dl"
+          curl -fsSL -o "$RUNNER_TEMP/raylib.zip" \
+            https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_win64_mingw-w64.zip
+          printf '%s  %s\n' "$RAYLIB_WIN64_SHA256" "$RUNNER_TEMP/raylib.zip" | sha256sum -c -
+          unzip -q -o "$RUNNER_TEMP/raylib.zip" -d "$RUNNER_TEMP/raylib-dl"
+
+      - name: Run full Windows tests + fuzz harnesses and build static single-exe
+        run: |
+          VERSION="${{ needs.verify.outputs.version }}"
+          RAYLIB_DIR="$(cygpath -m "$RUNNER_TEMP/raylib-dl/raylib-5.5_win64_mingw-w64")"
+
+          make BUILD=release test fuzz-test
+          RAYLIB_DIR="$RAYLIB_DIR" make BUILD=release app
+          ./build/windows-release/rata-workspace.exe --version | grep -F "Rata Workspace $VERSION"
+
+          if objdump -p ./build/windows-release/rata-workspace.exe | grep "DLL Name:" | grep -iE 'raylib|libgcc|winpthread|stdc\+\+'; then
+            echo "ERROR: non-system DLL dependency detected!"
+            exit 1
+          fi
+
+          # Stage portable zip + Inno Setup input
+          rm -rf build/windows-stage build/release-artifacts
+          mkdir -p build/windows-stage/licenses build/release-artifacts
+          cp build/windows-release/rata-workspace.exe build/windows-stage/
+          cp "$RUNNER_TEMP/raylib-dl/raylib-5.5_win64_mingw-w64/LICENSE" build/windows-stage/licenses/raylib-LICENSE.txt
+          cp vendor/raygui/LICENSE build/windows-stage/licenses/raygui-LICENSE.txt
+          cp vendor/jetbrains-mono/OFL.txt build/windows-stage/licenses/jetbrains-mono-OFL.txt
+          cp CHANGELOG.md build/windows-stage/CHANGELOG.md
+
+          PORTABLE_DIR="rata-workspace-v${VERSION}-windows-x86_64-portable"
+          mkdir -p "$RUNNER_TEMP/$PORTABLE_DIR"
+          cp -r build/windows-stage/. "$RUNNER_TEMP/$PORTABLE_DIR/"
+          (cd "$RUNNER_TEMP" && zip -qr "$(cygpath -u "$GITHUB_WORKSPACE")/build/release-artifacts/${PORTABLE_DIR}.zip" "$PORTABLE_DIR")
+
+      - name: Build per-user Windows installer with Inno Setup
+        shell: pwsh
+        run: |
+          $version = "${{ needs.verify.outputs.version }}"
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) {
+            choco install -y innosetup --no-progress
+          }
+          & $iscc "/DRATA_APP_VERSION=$version" "packaging\windows\rata-workspace.iss"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Get-ChildItem build\release-artifacts
+
+      - name: Upload Windows release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            build/release-artifacts/*.exe
+            build/release-artifacts/*.zip
+
+  publish:
+    name: Generate SHA256SUMS & Publish GitHub Release
+    needs: [ verify, build-linux, build-windows ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist-artifacts
+          merge-multiple: true
+
+      - name: Generate SHA256SUMS and extract CHANGELOG release notes
+        run: |
+          VERSION="${{ needs.verify.outputs.version }}"
+          (cd dist-artifacts && sha256sum * > SHA256SUMS)
+          cat dist-artifacts/SHA256SUMS
+
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release_notes.md
+
+          if [ ! -s release_notes.md ]; then
+            echo "ERROR: Could not find section '## [$VERSION]' in CHANGELOG.md"
+            exit 1
+          fi
+          cat release_notes.md
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release create "$TAG" \
+            dist-artifacts/* \
+            --title "Rata Workspace $TAG" \
+            --notes-file release_notes.md
