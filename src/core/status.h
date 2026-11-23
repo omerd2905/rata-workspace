@@ -1,0 +1,30 @@
+#ifndef RATA_CORE_STATUS_H
+#define RATA_CORE_STATUS_H
+
+/* Mathematical constants (avoiding non-standard POSIX M_PI). */
+#define RATA_PI      3.14159265358979323846264338327950288
+#define RATA_TWO_PI  6.28318530717958647692528676655900577
+#define RATA_HALF_PI 1.57079265358979323846264338327950288
+#define RATA_E       2.71828182845904523536028747135266250
+#define RATA_LN2     0.69314718055994530941723212145817657
+#define RATA_LN10    2.30258509299404568401799145468436421
+#define RATA_EPS     1.0e-12
+
+typedef enum RataStatus {
+    RATA_OK = 0,
+    RATA_ERR_INVALID_ARG = 1,
+    RATA_ERR_OUT_OF_MEMORY = 2,
+    RATA_ERR_DIV_ZERO = 3,
+    RATA_ERR_SINGULAR = 4,
+    RATA_ERR_NO_CONVERGENCE = 5,
+    RATA_ERR_PARSE = 6,
+    RATA_ERR_RANGE = 7,
+    RATA_ERR_UNSTABLE = 8,
+    RATA_ERR_IO = 9,
+    RATA_ERR_FORMAT = 10
+} RataStatus;
+
+/* Returns a static human-readable string for status. Caller does not free. */
+const char *rata_status_str(RataStatus status);
+
+#endif /* RATA_CORE_STATUS_H */
