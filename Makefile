@@ -119,10 +119,10 @@ else
   endif
 endif
 
-# Static C runtime / winpthread on Windows so rata-workspace.exe is a single self-contained binary
+# Static C runtime / winpthread on Windows so rata-workspace.exe is a single self-contained GUI binary
 ifeq ($(TARGET),windows)
-  APP_LDFLAGS   := $(LDFLAGS) -static -static-libgcc
-  PLATFORM_LIBS := -Wl,-Bstatic -lpthread -Wl,-Bdynamic -lopengl32 -lgdi32 -lwinmm
+  APP_LDFLAGS   := $(LDFLAGS) -mwindows -static -static-libgcc
+  PLATFORM_LIBS := -Wl,-Bstatic -lpthread -Wl,-Bdynamic -lopengl32 -lgdi32 -lwinmm -lwinhttp -ladvapi32
 else
   APP_LDFLAGS   := $(LDFLAGS)
   PLATFORM_LIBS := -lGL -lpthread -ldl -lrt -lX11

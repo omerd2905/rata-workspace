@@ -13,8 +13,29 @@
 #define RATA_VERSION "0.1.0-dev"
 #endif
 
-/* Top-level shell state (sidebar switcher, project file bar, About dialog, toast banner).
- * Owned by caller (no hidden global state). */
+typedef enum RataUpdateUiState {
+    RATA_UPD_IDLE = 0,
+    RATA_UPD_CHECKING = 1,
+    RATA_UPD_UP_TO_DATE = 2,
+    RATA_UPD_READY = 3,
+    RATA_UPD_AUTH_ERROR = 4,
+    RATA_UPD_ERROR = 5
+} RataUpdateUiState;
+
+typedef struct RataUpdateUiStatus {
+    bool supported;       /* True on Windows; false on Linux/Nix */
+    bool is_nix_store;    /* True when running from /nix/store */
+    bool from_manual;     /* True when last result came from explicit user check */
+    RataUpdateUiState state;
+    char ready_version[32];
+    char message[192];
+} RataUpdateUiStatus;
+
+typedef void (*RataUpdatePollFn)(void *user_data, RataUpdateUiStatus *out);
+typedef void (*RataUpdateTriggerFn)(void *user_data);
+
+/* Top-level shell state (sidebar switcher, project file bar, About/Updates dialog,
+ * non-blocking update banner, toast banner). Owned by caller (no hidden global state). */
 typedef struct RataShell {
     RataTheme theme;
     RataWorkspaceRegistry registry;
@@ -26,9 +47,26 @@ typedef struct RataShell {
     RataBannerLevel toast_level;
     double toast_timer;
     bool show_about;
+
+    /* Auto-update UI state & callbacks (decoupled from src/app/ to preserve layering). */
+    bool auto_update;
+    bool update_banner_dismissed;
+    bool show_restart_update_modal;
+    bool request_restart_for_update;
+    RataUpdateUiState last_seen_upd_state;
+    RataUpdateUiStatus update_status;
+    void *updater_ctx;
+    RataUpdatePollFn updater_poll_fn;
+    RataUpdateTriggerFn updater_check_fn;
 } RataShell;
 
 void ui_shell_init(RataShell *shell);
+
+/* Connects app-layer updater polling/trigger callbacks without violating UI->App layering. */
+void ui_shell_set_updater(RataShell *shell,
+                          void *ctx,
+                          RataUpdatePollFn poll_fn,
+                          RataUpdateTriggerFn check_fn);
 
 /* Loads/saves lightweight user preferences inside the per-user config directory.
  * Missing settings file on first run is silently ignored (zero setup required). */

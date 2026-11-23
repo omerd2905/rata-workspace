@@ -107,8 +107,13 @@ int main(int argc, char **argv) {
         UnloadImage(img);
     }
 
-    /* Exercise Coming Soon workspace and About modal. */
+    /* Exercise Coming Soon workspace, update-ready banner, restart modal, and About modal. */
     shell->active_ws = WS_RATALOOP;
+    shell->update_status.supported = true;
+    shell->update_status.state = RATA_UPD_READY;
+    snprintf(shell->update_status.ready_version, sizeof(shell->update_status.ready_version), "0.2.0");
+    snprintf(shell->update_status.message, sizeof(shell->update_status.message),
+             "v0.2.0 ready \xe2\x80\x94 restart to apply.");
     shell->show_about = true;
     for (int f = 0; f < 2; ++f) {
         rata_arena_reset(&arena);
@@ -123,11 +128,32 @@ int main(int argc, char **argv) {
         UnloadImage(img);
     }
 
+    shell->show_about = false;
+    shell->show_restart_update_modal = true;
+    for (int f = 0; f < 2; ++f) {
+        rata_arena_reset(&arena);
+        BeginDrawing();
+        ui_shell_update_and_draw(shell, &arena, 1.0 / 60.0);
+        EndDrawing();
+    }
+
+    shell->show_restart_update_modal = false;
+    shell->update_status.supported = false;
+    shell->update_status.is_nix_store = true;
+    shell->update_status.state = RATA_UPD_IDLE;
+    shell->show_about = true;
+    for (int f = 0; f < 2; ++f) {
+        rata_arena_reset(&arena);
+        BeginDrawing();
+        ui_shell_update_and_draw(shell, &arena, 1.0 / 60.0);
+        EndDrawing();
+    }
+
     ui_theme_unload_font(&shell->theme);
     CloseWindow();
     free(rw);
     free(shell);
     rata_arena_destroy(&arena);
-    printf("ui_smoke: PASSED (embedded JetBrains Mono + Greek glyphs, 6 RataWave tabs, pole-clamped LTI, Coming Soon, About).\n");
+    printf("ui_smoke: PASSED (embedded JetBrains Mono + Greek glyphs, 6 RataWave tabs, pole-clamped LTI, Coming Soon, About & Update UI).\n");
     return 0;
 }
