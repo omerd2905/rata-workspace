@@ -47,6 +47,11 @@ jobs:
       - name: Build and run parser fuzz harnesses under ASan + UBSan
         run: make BUILD=debug fuzz-test
 
+      - name: Build and verify rata-sign tool under ASan + UBSan
+        run: |
+          make BUILD=debug sign-tool
+          ./build/linux-debug/rata-sign keygen >/dev/null
+
       - name: Build and run UI smoke test under Xvfb + ASan/UBSan
         run: |
           RAYLIB_DIR="$RUNNER_TEMP/raylib" make BUILD=debug ui-smoke
@@ -56,13 +61,14 @@ jobs:
 
       - name: Build static-raylib release app, verify --version and install/uninstall
         run: |
-          RAYLIB_DIR="$RUNNER_TEMP/raylib" RAYLIB_STATIC=1 make BUILD=release app test
+          RAYLIB_DIR="$RUNNER_TEMP/raylib" RAYLIB_STATIC=1 make BUILD=release app test sign-tool
           ./build/linux-release/rata-workspace --version
           ! ldd ./build/linux-release/rata-workspace | grep -i libraylib
           RAYLIB_DIR="$RUNNER_TEMP/raylib" RAYLIB_STATIC=1 make BUILD=release install PREFIX="$RUNNER_TEMP/stage"
           test -x "$RUNNER_TEMP/stage/bin/rata-workspace"
           test -f "$RUNNER_TEMP/stage/share/applications/rata-workspace.desktop"
           test -f "$RUNNER_TEMP/stage/share/icons/hicolor/256x256/apps/rata-workspace.png"
+          test -f "$RUNNER_TEMP/stage/share/licenses/rata-workspace/monocypher-LICENCE.txt"
           make uninstall PREFIX="$RUNNER_TEMP/stage"
 
   windows-mingw:
@@ -98,11 +104,13 @@ jobs:
       - name: Check layering rules
         run: make check-layering
 
-      - name: Build static Windows exe, verify DLL deps, and run tests + fuzz harnesses
+      - name: Build static Windows GUI exe, verify -mwindows/--version/DLL deps, and run tests + fuzz
         run: |
           RAYLIB_DIR="$(cygpath -m "$RUNNER_TEMP/raylib-dl/raylib-5.5_win64_mingw-w64")"
-          RAYLIB_DIR="$RAYLIB_DIR" make BUILD=release app
-          ./build/windows-release/rata-workspace.exe --version
+          RAYLIB_DIR="$RAYLIB_DIR" make BUILD=release app sign-tool
+          VERSION="$(tr -d ' \r\n' < VERSION)"
+          ./build/windows-release/rata-workspace.exe --version | grep -F "Rata Workspace $VERSION"
+          objdump -p ./build/windows-release/rata-workspace.exe | grep -F "(Windows GUI)"
           objdump -p ./build/windows-release/rata-workspace.exe | grep "DLL Name:"
           if objdump -p ./build/windows-release/rata-workspace.exe | grep "DLL Name:" | grep -iE 'raylib|libgcc|winpthread|stdc\+\+'; then
             echo "ERROR: non-system DLL dependency detected!"

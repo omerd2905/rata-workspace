@@ -93,6 +93,8 @@ src/app/       Application entry point (main.c) and top-level lifecycle.
   - **raygui** (vendored unmodified in `vendor/raygui/`)
   - **JetBrains Mono NL** (SIL OFL 1.1 monospace font with Greek coverage, embedded as read-only C
     byte array in `src/ui/ui_font_data.c`, license in `vendor/jetbrains-mono/OFL.txt`)
+  - **Monocypher 4.0.3** (BSD-2-Clause / CC0, vendored unmodified in `vendor/monocypher/`, used for
+    Ed25519 release-update signature verification)
   - **libngspice** (C API, for Phase 6 / RataSim)
   - **GHDL** (external CLI process, for Phase 5 / RataForge)
 - **Never** silently add another GUI, math, JSON, or testing library. Justify any new dependency
@@ -111,7 +113,8 @@ src/app/       Application entry point (main.c) and top-level lifecycle.
   samples, etc.).
 - **Visible assumptions**: state implicit assumptions directly in the UI (e.g., normalized
   `sinc(x) = sin(pi*x)/(pi*x)`, phase zeroed below magnitude threshold, unit-circle pole clamping
-  banner on `freqz`, assuming unity feedback).
+  banner on `freqz`, Nyquist-boundary unrecoverable phase on `dsp_sampling`, assuming unity
+  feedback).
 - **Graceful edge-case handling**: never crash, produce NaN/Inf silently, or hang on unstable
   systems (`|p| >= 1`), singular matrices, division by zero, non-positive log-axis values, or
   malformed user input.
@@ -134,8 +137,18 @@ src/app/       Application entry point (main.c) and top-level lifecycle.
     committed fixtures under `tests/fixtures/`).
   - If a project file's version is newer than supported, return `RATA_ERR_NEWER_VERSION` and display
     a clear message instructing the user to update (never fail silently).
-- **No in-app auto-updater or network code**: updates happen solely via `nix profile upgrade` on
-  NixOS or running the newer installer on Windows.
+- **Updates (platform-split)**:
+  - **NixOS / Linux**: NO self-updater and NO network code. Nix builds track the `stable` branch and
+    update via `nix profile upgrade rata-workspace`. When running from `/nix/store`, the About dialog
+    explicitly instructs the user to update via `nix profile upgrade`.
+  - **Windows 11**: Signed in-app auto-updater isolated strictly in `src/app/app_updater.c` (WinHTTP
+    system DLL + Windows Credential Manager + Ed25519 via Monocypher + in-house SHA-256; zero JSON
+    library). Reads line-based `update-manifest.txt` from the private repo's `stable` branch using a
+    user-configured fine-grained GitHub PAT (`rata-workspace --set-token`, never logged/printed/saved
+    to disk), manually follows GitHub's 302 asset redirect WITHOUT forwarding `Authorization`,
+    verifies exact byte size + SHA-256 + Ed25519 signature against the compiled-in public key, and
+    silently launches the verified Inno Setup installer (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART`)
+    on next startup or explicit user restart.
 
 ---
 
@@ -143,13 +156,18 @@ src/app/       Application entry point (main.c) and top-level lifecycle.
 
 - **NixOS (`flake.nix`)**:
   - `packages.default` and `apps.default` build and install binary, `.desktop`, icons, and licenses
-    via `Makefile`, and declare all runtime dependencies (including `libngspice` and `ghdl` for
-    later phases) so `nix profile install` / `nix profile upgrade` / `nix run` stay one command.
+    via `Makefile`, wrap runtime `LD_LIBRARY_PATH` (`libGL`, X11 libs, `libngspice`) and `PATH`
+    (`ghdl`), and track the `stable` branch (`?ref=stable`) so `nix profile install` /
+    `nix profile upgrade` / `nix run` stay one command tracking published releases.
 - **Windows 11**:
-  - Release binary links statically (`libraylib.a`, `-static -static-libgcc`, static winpthread)
-    with embedded icon and version metadata via `windres` (`assets/rata-workspace.rc`).
+  - Release binary links statically (`-mwindows`, `libraylib.a`, `-static -static-libgcc`, static
+    winpthread, Windows system DLLs only including `winhttp.dll` and `advapi32.dll`) with embedded
+    icon and version metadata via `windres` (`assets/rata-workspace.rc`). CLI flags (`--version`,
+    `--help`, `--update`, `--set-token`) preserve redirected stdout/stderr and attach to the parent
+    console otherwise.
   - Per-user Inno Setup installer (`packaging/windows/rata-workspace.iss`, fixed `AppId`, no admin
-    rights, installs to `%LOCALAPPDATA%\Programs\RataWorkspace`, upgrades in place) + portable zip.
+    rights, installs to `%LOCALAPPDATA%\Programs\RataWorkspace`, registers `{app}` in HKCU `Path`,
+    upgrades in place, relaunches after silent auto-update) + portable zip.
   - **Future-phase bundling rule**: when Phase 5 (RataForge / GHDL) and Phase 6 (RataSim /
     libngspice) are added, bundle GHDL and libngspice directly into BOTH the Windows Inno Setup
     installer and the portable `.zip` so Windows installation and upgrades remain a single step.
@@ -157,10 +175,11 @@ src/app/       Application entry point (main.c) and top-level lifecycle.
   - Release tarball ships static-raylib binary, `.desktop`, icons, licenses, and `make install` /
     `make uninstall` (`PREFIX=$HOME/.local`).
 - **Tag-driven releases (`.github/workflows/release.yml`)**:
-  - Pushing tag `vX.Y.Z` verifies `VERSION` matches the tag, runs full tests + fuzz + Xvfb UI smoke
-    (refusing to release on any failure), builds Linux tarball + Windows installer + Windows zip,
-    generates `SHA256SUMS`, and publishes the GitHub Release using the matching `CHANGELOG.md`
-    section.
+  - Pushing tag `vX.Y.Z` verifies `VERSION` matches the tag and `RATA_UPDATE_SIGNING_KEY` matches
+    the compiled-in public key, runs full tests + fuzz + Xvfb UI smoke (refusing to release on any
+    failure), builds Linux tarball + Windows installer + Windows zip, generates `SHA256SUMS`,
+    publishes the GitHub Release using the matching `CHANGELOG.md` section, signs
+    `update-manifest.txt` with `rata-sign`, and advances the `stable` branch.
 
 ---
 
