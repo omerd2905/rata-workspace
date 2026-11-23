@@ -1,0 +1,18 @@
+RATA_PROJECT 1
+# Golden v1 project fixture — newer versions of Rata Workspace must always open v1 files.
+
+[app]
+active_workspace ratawave
+
+[ratawave]
+active_tab 3
+expr_x sin(2*pi*50*n/fs) + 0.5*cos(2*pi*140*n/fs)
+fs_hz 1000
+n0 0
+n_len 64
+conv_expr_x u(n) - u(n - 5)
+conv_expr_h 0.75^n * u(n)
+lti_b 0.2, 0.2
+lti_a 1.0, -1.1, 0.65
+samp_f0_hz 800
+samp_fs_hz 1000

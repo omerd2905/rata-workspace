@@ -24,6 +24,8 @@ const char *rata_status_str(RataStatus status) {
             return "I/O error";
         case RATA_ERR_FORMAT:
             return "unsupported or malformed file format";
+        case RATA_ERR_NEWER_VERSION:
+            return "file format version is newer than this version of Rata Workspace supports";
         default:
             return "unknown error";
     }

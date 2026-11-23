@@ -235,9 +235,16 @@ RataStatus project_file_parse(const char *text,
             }
             char *end = NULL;
             unsigned long ver = strtoul(line + plen, &end, 10);
-            if (end == line + plen || *end != '\0' || ver != RATA_PROJECT_FORMAT_VERSION) {
+            if (end == line + plen || *end != '\0' || ver == 0ul) {
                 rata_arena_restore(arena, mark);
+                memset(doc_out, 0, sizeof(*doc_out));
                 return RATA_ERR_FORMAT;
+            }
+            if (ver > (unsigned long)RATA_PROJECT_FORMAT_VERSION) {
+                rata_arena_restore(arena, mark);
+                memset(doc_out, 0, sizeof(*doc_out));
+                doc_out->version = (ver > 0xFFFFFFFFul) ? 0xFFFFFFFFu : (uint32_t)ver;
+                return RATA_ERR_NEWER_VERSION;
             }
             doc_out->version = (uint32_t)ver;
             saw_header = true;

@@ -16,6 +16,7 @@
 #include "engines/expr.h"
 #include "engines/formula_parse.h"
 #include "engines/project_file.h"
+#include "engines/user_config.h"
 
 static void test_expr_parser_and_primitives(TestContext *t) {
     uint8_t mem[65536];
@@ -97,13 +98,42 @@ static void test_project_file_and_formula_parsers(TestContext *t) {
     const char *ex = project_doc_get(&loaded, "ratawave", "expr_x");
     test_expect_true(t, ex != NULL && strcmp(ex, "u(n) - u(n-5)") == 0, "expr roundtrip", __LINE__);
 
-    /* Malformed project files safely rejected. */
+    /* Newer project versions return explicit RATA_ERR_NEWER_VERSION with version number. */
     const char *bad_ver = "RATA_PROJECT 99\n[ratawave]\nfs 1000\n";
-    test_expect_true(t, project_file_parse(bad_ver, strlen(bad_ver), &loaded, &a) == RATA_ERR_FORMAT,
-                     "reject bad version", __LINE__);
+    test_expect_true(t, project_file_parse(bad_ver, strlen(bad_ver), &loaded, &a) ==
+                     RATA_ERR_NEWER_VERSION, "reject newer version", __LINE__);
+    test_expect_true(t, loaded.version == 99u, "report newer version number", __LINE__);
     const char *no_hdr = "[ratawave]\nfs 1000\n";
     test_expect_true(t, project_file_parse(no_hdr, strlen(no_hdr), &loaded, &a) == RATA_ERR_FORMAT,
                      "reject missing header", __LINE__);
+
+    /* Committed v1 golden fixture must always load cleanly. */
+    RataProjectDoc v1doc;
+    test_expect_true(t, project_file_load_path("tests/fixtures/sample_v1.rata", &v1doc, &a) == RATA_OK,
+                     "load committed v1 fixture", __LINE__);
+    test_expect_true(t, v1doc.version == 1u, "v1 version == 1", __LINE__);
+    const char *v1_ws = project_doc_get(&v1doc, "app", "active_workspace");
+    test_expect_true(t, v1_ws != NULL && strcmp(v1_ws, "ratawave") == 0, "v1 workspace", __LINE__);
+    double v1_fs = 0.0;
+    test_expect_true(t, project_doc_get_double(&v1doc, "ratawave", "fs_hz", &v1_fs), "v1 fs", __LINE__);
+    test_expect_near(t, v1_fs, 1000.0, 1.0e-12, "v1 fs==1000", __LINE__);
+
+    /* User config directory resolution (Linux XDG, Linux HOME fallback, Windows APPDATA). */
+    char dir[256], path[256];
+    test_expect_true(t, user_config_resolve_dir(false, "/tmp/xdg", "/home/u", NULL, dir, sizeof(dir)) == RATA_OK,
+                     "xdg dir", __LINE__);
+    test_expect_true(t, strcmp(dir, "/tmp/xdg/rata-workspace") == 0, "xdg path exact", __LINE__);
+    test_expect_true(t, user_config_resolve_dir(false, NULL, "/home/u/", NULL, dir, sizeof(dir)) == RATA_OK,
+                     "home dir", __LINE__);
+    test_expect_true(t, strcmp(dir, "/home/u/.config/rata-workspace") == 0, "home fallback", __LINE__);
+    test_expect_true(t, user_config_resolve_dir(true, NULL, NULL, "C:\\Users\\Me\\AppData\\Roaming\\",
+                     dir, sizeof(dir)) == RATA_OK, "win dir", __LINE__);
+    test_expect_true(t, strcmp(dir, "C:\\Users\\Me\\AppData\\Roaming\\RataWorkspace") == 0,
+                     "win appdata", __LINE__);
+    test_expect_true(t, user_config_join_path(true, dir, "settings.rata", path, sizeof(path)) == RATA_OK,
+                     "win join", __LINE__);
+    test_expect_true(t, strcmp(path, "C:\\Users\\Me\\AppData\\Roaming\\RataWorkspace\\settings.rata") == 0,
+                     "win join exact", __LINE__);
 
     /* Formula parser valid + malformed tests. */
     FormulaTree ft;
@@ -356,33 +386,81 @@ static void test_fir_and_iir_filter_design(TestContext *t) {
 }
 
 static void test_sampling_and_aliasing(TestContext *t) {
-    uint8_t mem[131072];
+    uint8_t mem[262144];
     RataArena a;
     rata_arena_init(&a, mem, sizeof(mem));
 
     double f_alias = 0.0;
     bool is_aliased = false;
-    bool phase_inv = false;
+    bool phase_neg = false;
 
-    /* Textbook aliasing: f0=800 Hz, fs=1000 Hz => aliased to 200 Hz, phase inverted. */
-    test_expect_true(t, dsp_alias_frequency(800.0, 1000.0, &f_alias, &is_aliased, &phase_inv) == RATA_OK,
+    /* 1. Folded pure cosine (phi = 0): f0=800 Hz, fs=1000 Hz => cos(2*pi*200*n/fs), NOT inverted */
+    test_expect_true(t, dsp_alias_frequency(800.0, 1000.0, &f_alias, &is_aliased, &phase_neg) == RATA_OK,
                      "alias 800/1000", __LINE__);
-    test_expect_true(t, is_aliased && phase_inv, "aliased + inverted", __LINE__);
+    test_expect_true(t, is_aliased && phase_neg, "aliased + phase_negated", __LINE__);
     test_expect_near(t, f_alias, 200.0, 1.0e-12, "f_alias=200", __LINE__);
+    RataSamplingConfig cfg_cos = {800.0, 1.0, 0.0, 1000.0, 0.01, 101u};
+    RataSamplingResult res_cos;
+    test_expect_true(t, dsp_sampling_simulate(&cfg_cos, &res_cos, &a) == RATA_OK, "sim cos", __LINE__);
+    test_expect_near(t, res_cos.aliased_phase_rad, 0.0, 1.0e-12, "cos aliased phase==0", __LINE__);
+    for (size_t n = 0u; n < res_cos.sample_len; ++n) {
+        double tn = res_cos.t_samples[n];
+        double expected = cos(RATA_TWO_PI * 200.0 * tn);
+        test_expect_near(t, res_cos.x_samples[n], expected, 1.0e-12, "folded cos sample", __LINE__);
+    }
 
-    /* Second fold: f0=1300 Hz, fs=1000 Hz => aliased to 300 Hz, not phase inverted. */
-    test_expect_true(t, dsp_alias_frequency(1300.0, 1000.0, &f_alias, &is_aliased, &phase_inv) == RATA_OK,
+    /* 2. Folded sinusoid with nonzero, non-(-pi/2) phase: phi = 0.7 rad, f0 = 800 Hz, fs = 1000 Hz.
+     * Alias MUST be cos(2*pi*200*t - 0.7), NOT +0.7 and NOT (0.7 + pi). */
+    const double phi = 0.7;
+    RataSamplingConfig cfg_phi = {800.0, 1.5, phi, 1000.0, 0.01, 101u};
+    RataSamplingResult res_phi;
+    test_expect_true(t, dsp_sampling_simulate(&cfg_phi, &res_phi, &a) == RATA_OK, "sim phi", __LINE__);
+    test_expect_true(t, res_phi.is_aliased && res_phi.phase_negated, "phi aliased+negated", __LINE__);
+    test_expect_near(t, res_phi.aliased_freq_hz, 200.0, 1.0e-12, "phi f_alias=200", __LINE__);
+    test_expect_near(t, res_phi.aliased_phase_rad, -phi, 1.0e-12, "phi -> -phi", __LINE__);
+    bool differed_from_plus_phi = false;
+    bool differed_from_pi_shift = false;
+    for (size_t n = 0u; n < res_phi.sample_len; ++n) {
+        double tn = res_phi.t_samples[n];
+        double expected = 1.5 * cos(RATA_TWO_PI * 200.0 * tn - phi);
+        double wrong_plus = 1.5 * cos(RATA_TWO_PI * 200.0 * tn + phi);
+        double wrong_pi = 1.5 * cos(RATA_TWO_PI * 200.0 * tn + phi + RATA_PI);
+        test_expect_near(t, res_phi.x_samples[n], expected, 1.0e-12, "folded phi sample", __LINE__);
+        if (fabs(res_phi.x_samples[n] - wrong_plus) > 0.1) {
+            differed_from_plus_phi = true;
+        }
+        if (fabs(res_phi.x_samples[n] - wrong_pi) > 0.1) {
+            differed_from_pi_shift = true;
+        }
+    }
+    test_expect_true(t, differed_from_plus_phi, "not +phi", __LINE__);
+    test_expect_true(t, differed_from_pi_shift, "not pi-shifted", __LINE__);
+
+    /* 3. Arbitrary higher-zone fold: f0 = 2700 Hz, fs = 1000 Hz => rem = 700 > 500 => 300 Hz, -phi. */
+    RataSamplingConfig cfg_hi = {2700.0, 1.0, phi, 1000.0, 0.01, 101u};
+    RataSamplingResult res_hi;
+    test_expect_true(t, dsp_sampling_simulate(&cfg_hi, &res_hi, &a) == RATA_OK, "sim 2700", __LINE__);
+    test_expect_true(t, res_hi.is_aliased && res_hi.phase_negated, "2700 negated", __LINE__);
+    test_expect_near(t, res_hi.aliased_freq_hz, 300.0, 1.0e-12, "2700 -> 300", __LINE__);
+    test_expect_near(t, res_hi.aliased_phase_rad, -phi, 1.0e-12, "2700 -> -phi", __LINE__);
+    for (size_t n = 0u; n < res_hi.sample_len; ++n) {
+        double tn = res_hi.t_samples[n];
+        test_expect_near(t, res_hi.x_samples[n], cos(RATA_TWO_PI * 300.0 * tn - phi),
+                         1.0e-11, "2700 sample match", __LINE__);
+    }
+
+    /* 4. Even-zone fold: f0=1300 Hz, fs=1000 Hz => aliased to 300 Hz, phase NOT negated (+phi). */
+    test_expect_true(t, dsp_alias_frequency(1300.0, 1000.0, &f_alias, &is_aliased, &phase_neg) == RATA_OK,
                      "alias 1300/1000", __LINE__);
-    test_expect_true(t, is_aliased && !phase_inv, "aliased, not inverted", __LINE__);
+    test_expect_true(t, is_aliased && !phase_neg, "aliased, not negated", __LINE__);
     test_expect_near(t, f_alias, 300.0, 1.0e-12, "f_alias=300", __LINE__);
 
-    /* Well-sampled sinc reconstruction matches analog signal cleanly. */
+    /* 5. Well-sampled sinc reconstruction matches analog signal cleanly. */
     RataSamplingConfig cfg = {100.0, 1.0, 0.25, 1000.0, 0.02, 201u};
     RataSamplingResult res;
     test_expect_true(t, dsp_sampling_simulate(&cfg, &res, &a) == RATA_OK, "sim ok", __LINE__);
     test_expect_true(t, !res.is_aliased, "not aliased", __LINE__);
     test_expect_near(t, res.nyquist_freq_hz, 500.0, 1.0e-12, "nyq=500", __LINE__);
-    /* Check interior reconstruction accuracy (truncation window is +/-32 taps, so ~1e-2). */
     for (size_t i = 20u; i < 180u; i += 10u) {
         test_expect_near(t, res.x_recon_sinc[i], res.x_analog[i], 2.0e-2, "sinc recon", __LINE__);
     }
