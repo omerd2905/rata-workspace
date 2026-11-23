@@ -2,11 +2,13 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "core/arena.h"
 #include "core/cplx.h"
 #include "core/fft.h"
 #include "core/poly.h"
+#include "core/sha256.h"
 #include "core/status.h"
 
 static void test_arena_basic_and_marks(TestContext *t) {
@@ -254,6 +256,70 @@ static void test_fft_textbook_radix2_and_arbitrary(TestContext *t) {
     test_expect_true(t, rata_arena_used(&scratch) == 0u, "fft scratch restored", __LINE__);
 }
 
+static void test_sha256_nist_vectors(TestContext *t) {
+    uint8_t digest[RATA_SHA256_DIGEST_LEN];
+    char hex[RATA_SHA256_HEX_LEN + 1u];
+
+    /* NIST FIPS 180-4 vector 1: empty string */
+    sha256_hash((const uint8_t *)"", 0u, digest);
+    sha256_to_hex(digest, hex);
+    test_expect_true(t, strcmp(hex,
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") == 0,
+        "sha256 empty", __LINE__);
+
+    /* NIST FIPS 180-4 vector 2: "abc" */
+    sha256_hash((const uint8_t *)"abc", 3u, digest);
+    sha256_to_hex(digest, hex);
+    test_expect_true(t, strcmp(hex,
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") == 0,
+        "sha256 abc", __LINE__);
+
+    /* NIST FIPS 180-4 vector 3: 448-bit message (2 blocks) */
+    const char *m448 = "abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq";
+    sha256_hash((const uint8_t *)m448, strlen(m448), digest);
+    sha256_to_hex(digest, hex);
+    test_expect_true(t, strcmp(hex,
+        "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1") == 0,
+        "sha256 448-bit", __LINE__);
+
+    /* NIST FIPS 180-4 vector 4: 1,000,000 repetitions of 'a' via streaming chunks */
+    RataSha256Ctx ctx;
+    sha256_init(&ctx);
+    uint8_t chunk[1000];
+    memset(chunk, 'a', sizeof(chunk));
+    for (int i = 0; i < 1000; ++i) {
+        sha256_update(&ctx, chunk, sizeof(chunk));
+    }
+    sha256_final(&ctx, digest);
+    sha256_to_hex(digest, hex);
+    test_expect_true(t, strcmp(hex,
+        "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0") == 0,
+        "sha256 1M a", __LINE__);
+
+    /* Streaming arbitrary odd chunk sizes matches one-shot. */
+    sha256_init(&ctx);
+    sha256_update(&ctx, (const uint8_t *)m448, 7u);
+    sha256_update(&ctx, (const uint8_t *)m448 + 7u, 19u);
+    sha256_update(&ctx, (const uint8_t *)m448 + 26u, strlen(m448) - 26u);
+    sha256_final(&ctx, digest);
+    sha256_to_hex(digest, hex);
+    test_expect_true(t, strcmp(hex,
+        "248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1") == 0,
+        "sha256 streaming odd chunks", __LINE__);
+
+    /* Hex decode roundtrip + invalid hex rejection. */
+    uint8_t decoded[RATA_SHA256_DIGEST_LEN];
+    test_expect_true(t, sha256_from_hex(hex, decoded) == RATA_OK, "hex decode ok", __LINE__);
+    test_expect_true(t, memcmp(decoded, digest, sizeof(digest)) == 0, "hex roundtrip", __LINE__);
+    test_expect_true(t, sha256_from_hex("deadbeef", decoded) == RATA_ERR_PARSE,
+                     "short hex rejected", __LINE__);
+    char bad_hex[RATA_SHA256_HEX_LEN + 1u];
+    memcpy(bad_hex, hex, sizeof(bad_hex));
+    bad_hex[10] = 'g';
+    test_expect_true(t, sha256_from_hex(bad_hex, decoded) == RATA_ERR_PARSE,
+                     "non-hex rejected", __LINE__);
+}
+
 void run_core_tests(TestContext *t) {
     printf("=== Core Math Suite ===\n");
     test_run(t, "arena_basic_and_marks", test_arena_basic_and_marks);
@@ -261,4 +327,5 @@ void run_core_tests(TestContext *t) {
     test_run(t, "poly_arithmetic_and_divmod", test_poly_arithmetic_and_divmod);
     test_run(t, "poly_roots_textbook", test_poly_roots_textbook);
     test_run(t, "fft_textbook_radix2_and_arbitrary", test_fft_textbook_radix2_and_arbitrary);
+    test_run(t, "sha256_nist_vectors", test_sha256_nist_vectors);
 }

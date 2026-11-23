@@ -2,11 +2,13 @@
 
 #include <math.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "core/arena.h"
 #include "core/cplx.h"
 #include "core/fft.h"
+#include "core/sha256.h"
 #include "core/status.h"
 #include "engines/dsp_conv.h"
 #include "engines/dsp_filter.h"
@@ -16,6 +18,8 @@
 #include "engines/expr.h"
 #include "engines/formula_parse.h"
 #include "engines/project_file.h"
+#include "engines/update_manifest.h"
+#include "engines/update_pubkey.h"
 #include "engines/user_config.h"
 
 static void test_expr_parser_and_primitives(TestContext *t) {
@@ -506,6 +510,135 @@ static void test_sampling_and_aliasing(TestContext *t) {
     }
 }
 
+static void test_update_manifest_and_ed25519(TestContext *t) {
+    /* 1. Strict semver parsing & ordering. */
+    RataSemver v010, v011, v020, v100, bad;
+    test_expect_true(t, update_semver_parse("0.1.0", &v010) == RATA_OK, "semver 0.1.0", __LINE__);
+    test_expect_true(t, update_semver_parse("0.1.1", &v011) == RATA_OK, "semver 0.1.1", __LINE__);
+    test_expect_true(t, update_semver_parse("0.2.0", &v020) == RATA_OK, "semver 0.2.0", __LINE__);
+    test_expect_true(t, update_semver_parse("1.0.0", &v100) == RATA_OK, "semver 1.0.0", __LINE__);
+    test_expect_true(t, update_semver_compare(v010, v010) == 0, "eq", __LINE__);
+    test_expect_true(t, update_semver_compare(v010, v011) < 0, "0.1.0 < 0.1.1", __LINE__);
+    test_expect_true(t, update_semver_compare(v011, v020) < 0, "0.1.1 < 0.2.0", __LINE__);
+    test_expect_true(t, update_semver_compare(v020, v100) < 0, "0.2.0 < 1.0.0", __LINE__);
+    test_expect_true(t, update_semver_compare(v100, v010) > 0, "1.0.0 > 0.1.0", __LINE__);
+    test_expect_true(t, update_semver_parse("v0.1.0", &bad) == RATA_ERR_PARSE, "reject v prefix", __LINE__);
+    test_expect_true(t, update_semver_parse("0.1", &bad) == RATA_ERR_PARSE, "reject 2 parts", __LINE__);
+    test_expect_true(t, update_semver_parse("0.1.0-rc1", &bad) == RATA_ERR_PARSE, "reject suffix", __LINE__);
+
+    /* 2. RFC 8032 Section 7.1 Test Vector 1 keypair derivation check. */
+    uint8_t rfc_seed[RATA_ED25519_SEED_LEN];
+    uint8_t rfc_sec[RATA_ED25519_SECKEY_LEN];
+    uint8_t rfc_pub[RATA_ED25519_PUBKEY_LEN];
+    const char *rfc_seed_hex =
+        "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60";
+    const char *rfc_pub_hex_expected =
+        "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a";
+    test_expect_true(t, update_hex_decode(rfc_seed_hex, 64u, rfc_seed, 32u) == RATA_OK,
+                     "rfc seed hex", __LINE__);
+    update_ed25519_keypair(rfc_seed, rfc_sec, rfc_pub);
+    char pub_hex[RATA_ED25519_PUBKEY_LEN * 2u + 1u];
+    update_hex_encode(rfc_pub, sizeof(rfc_pub), pub_hex);
+    test_expect_true(t, strcmp(pub_hex, rfc_pub_hex_expected) == 0,
+                     "RFC 8032 pubkey matches", __LINE__);
+
+    /* 3. All-zero placeholder public key MUST fail closed. */
+    uint8_t zero_pub[RATA_ED25519_PUBKEY_LEN];
+    memset(zero_pub, 0, sizeof(zero_pub));
+    test_expect_true(t, !update_pubkey_is_configured(zero_pub), "zero pub unconfigured", __LINE__);
+    test_expect_true(t, update_pubkey_is_configured(rfc_pub), "rfc pub configured", __LINE__);
+
+    /* 4. Sign, format, parse, and verify a real temporary installer file. */
+    const char *tmp_path = "rata_test_installer_tmp.bin";
+    const char *payload_data = "MZ-fake-rata-workspace-installer-payload-0.2.0";
+    FILE *fp = fopen(tmp_path, "wb");
+    test_expect_true(t, fp != NULL, "open tmp installer", __LINE__);
+    if (fp != NULL) {
+        fwrite(payload_data, 1u, strlen(payload_data), fp);
+        fclose(fp);
+    }
+
+    RataUpdateManifest m;
+    memset(&m, 0, sizeof(m));
+    snprintf(m.version, sizeof(m.version), "0.2.0");
+    m.semver = v020;
+    m.asset_id = 9876543210ULL;
+    test_expect_true(t, update_hash_file(tmp_path, &m.size_bytes, m.sha256) == RATA_OK,
+                     "hash tmp file", __LINE__);
+    test_expect_true(t, m.size_bytes == (uint64_t)strlen(payload_data), "exact size", __LINE__);
+    test_expect_true(t, update_manifest_sign(&m, rfc_sec) == RATA_OK, "sign manifest", __LINE__);
+
+    char text[RATA_UPDATE_MANIFEST_MAX];
+    size_t text_len = 0u;
+    test_expect_true(t, update_manifest_format(&m, text, sizeof(text), &text_len) == RATA_OK,
+                     "format manifest", __LINE__);
+
+    RataUpdateManifest parsed;
+    test_expect_true(t, update_manifest_parse(text, text_len, &parsed) == RATA_OK,
+                     "parse formatted manifest", __LINE__);
+    test_expect_true(t, strcmp(parsed.version, "0.2.0") == 0, "parsed version", __LINE__);
+    test_expect_true(t, parsed.asset_id == 9876543210ULL, "parsed asset_id", __LINE__);
+    test_expect_true(t, parsed.size_bytes == m.size_bytes, "parsed size", __LINE__);
+    test_expect_true(t, update_manifest_verify_signature(&parsed, rfc_pub) == RATA_OK,
+                     "sig verifies", __LINE__);
+    test_expect_true(t, update_manifest_verify_file(&parsed, tmp_path, rfc_pub) == RATA_OK,
+                     "file verifies", __LINE__);
+
+    /* 5. Reject unconfigured zero pubkey and wrong pubkey. */
+    test_expect_true(t, update_manifest_verify_signature(&parsed, zero_pub) == RATA_ERR_VERIFY,
+                     "zero pub rejected", __LINE__);
+    uint8_t wrong_pub[RATA_ED25519_PUBKEY_LEN];
+    memcpy(wrong_pub, rfc_pub, sizeof(wrong_pub));
+    wrong_pub[0] ^= 0x01u;
+    test_expect_true(t, update_manifest_verify_signature(&parsed, wrong_pub) == RATA_ERR_VERIFY,
+                     "wrong pub rejected", __LINE__);
+
+    /* 6. Tampering any signed field must fail verification. */
+    RataUpdateManifest tampered = parsed;
+    snprintf(tampered.version, sizeof(tampered.version), "0.2.1");
+    test_expect_true(t, update_manifest_verify_signature(&tampered, rfc_pub) == RATA_ERR_VERIFY,
+                     "tampered version rejected", __LINE__);
+
+    tampered = parsed;
+    tampered.asset_id += 1u;
+    test_expect_true(t, update_manifest_verify_signature(&tampered, rfc_pub) == RATA_ERR_VERIFY,
+                     "tampered asset_id rejected", __LINE__);
+
+    tampered = parsed;
+    tampered.size_bytes += 1u;
+    test_expect_true(t, update_manifest_verify_signature(&tampered, rfc_pub) == RATA_ERR_VERIFY,
+                     "tampered size rejected", __LINE__);
+
+    tampered = parsed;
+    tampered.sha256[31] ^= 0x80u;
+    test_expect_true(t, update_manifest_verify_signature(&tampered, rfc_pub) == RATA_ERR_VERIFY,
+                     "tampered sha256 rejected", __LINE__);
+
+    tampered = parsed;
+    tampered.signature[0] ^= 0x01u;
+    test_expect_true(t, update_manifest_verify_signature(&tampered, rfc_pub) == RATA_ERR_VERIFY,
+                     "tampered sig rejected", __LINE__);
+
+    /* 7. Tampering 1 byte of the downloaded file must fail file verification. */
+    fp = fopen(tmp_path, "wb");
+    if (fp != NULL) {
+        const char *corrupt = "MZ-fake-rata-workspace-installer-payload-0.2.1";
+        fwrite(corrupt, 1u, strlen(corrupt), fp);
+        fclose(fp);
+    }
+    test_expect_true(t, update_manifest_verify_file(&parsed, tmp_path, rfc_pub) == RATA_ERR_VERIFY,
+                     "tampered file rejected", __LINE__);
+    (void)remove(tmp_path);
+
+    /* 8. Future manifest format version returns RATA_ERR_NEWER_VERSION. */
+    const char *v2 = "RATA_UPDATE_MANIFEST 2\nversion=0.2.0\n";
+    test_expect_true(t, update_manifest_parse(v2, strlen(v2), &parsed) == RATA_ERR_NEWER_VERSION,
+                     "manifest v2 newer", __LINE__);
+
+    update_secure_wipe(rfc_seed, sizeof(rfc_seed));
+    update_secure_wipe(rfc_sec, sizeof(rfc_sec));
+}
+
 void run_engine_tests(TestContext *t) {
     printf("=== Engine & DSP Suite ===\n");
     test_run(t, "expr_parser_and_primitives", test_expr_parser_and_primitives);
@@ -514,4 +647,5 @@ void run_engine_tests(TestContext *t) {
     test_run(t, "lti_pole_zero_freqz_and_stability", test_lti_pole_zero_freqz_and_stability);
     test_run(t, "fir_and_iir_filter_design", test_fir_and_iir_filter_design);
     test_run(t, "sampling_and_aliasing", test_sampling_and_aliasing);
+    test_run(t, "update_manifest_and_ed25519", test_update_manifest_and_ed25519);
 }

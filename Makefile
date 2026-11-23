@@ -128,13 +128,16 @@ else
   PLATFORM_LIBS := -lGL -lpthread -ldl -lrt -lX11
 endif
 
+ENGINE_CFLAGS := $(CFLAGS) -isystem vendor/monocypher
 UI_CFLAGS := $(CFLAGS) $(RAYLIB_CFLAGS) -isystem vendor/raygui
-# Third-party raygui implementation compiled without -Werror on vendor code
+# Third-party vendor implementations compiled without -Werror on unmodified upstream code
 RAYGUI_IMPL_CFLAGS := -std=c11 $(OPT_FLAGS) $(SAN_FLAGS) -Isrc $(RAYLIB_CFLAGS) -isystem vendor/raygui -Wno-unused-parameter -Wno-unused-function -Wno-pedantic
+VENDOR_CRYPTO_CFLAGS := -std=c11 $(OPT_FLAGS) $(SAN_FLAGS) -Ivendor/monocypher
 
 # Source lists (explicit per layer to preserve strict layering)
 CORE_SRCS := $(wildcard src/core/*.c)
 ENGINE_SRCS := $(wildcard src/engines/*.c)
+MONOCYPHER_SRCS := vendor/monocypher/monocypher.c vendor/monocypher/monocypher-ed25519.c
 
 UI_RAYGUI_IMPL_SRC := src/ui/ui_raygui_impl.c
 UI_SRCS := $(filter-out $(UI_RAYGUI_IMPL_SRC),$(wildcard src/ui/*.c))
@@ -144,32 +147,36 @@ UI_SMOKE_SRC := tests/ui_smoke.c
 TEST_SRCS := $(filter-out $(UI_SMOKE_SRC),$(wildcard tests/*.c))
 FUZZ_SRCS := $(wildcard fuzz/*.c)
 
-CORE_OBJS     := $(patsubst %.c,$(OBJ_DIR)/%.o,$(CORE_SRCS))
-ENGINE_OBJS   := $(patsubst %.c,$(OBJ_DIR)/%.o,$(ENGINE_SRCS))
-UI_OBJS       := $(patsubst %.c,$(OBJ_DIR)/%.o,$(UI_SRCS))
-UI_RAYGUI_OBJ := $(if $(wildcard $(UI_RAYGUI_IMPL_SRC)),$(OBJ_DIR)/$(UI_RAYGUI_IMPL_SRC:.c=.o),)
-APP_OBJS      := $(patsubst %.c,$(OBJ_DIR)/%.o,$(APP_SRCS))
-TEST_OBJS     := $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRCS))
-UI_SMOKE_OBJ  := $(OBJ_DIR)/$(UI_SMOKE_SRC:.c=.o)
-FUZZ_BINS     := $(patsubst fuzz/%.c,$(BIN_DIR)/%$(EXE_EXT),$(FUZZ_SRCS))
+CORE_OBJS       := $(patsubst %.c,$(OBJ_DIR)/%.o,$(CORE_SRCS))
+ENGINE_OBJS     := $(patsubst %.c,$(OBJ_DIR)/%.o,$(ENGINE_SRCS))
+MONOCYPHER_OBJS := $(patsubst %.c,$(OBJ_DIR)/%.o,$(MONOCYPHER_SRCS))
+UI_OBJS         := $(patsubst %.c,$(OBJ_DIR)/%.o,$(UI_SRCS))
+UI_RAYGUI_OBJ   := $(if $(wildcard $(UI_RAYGUI_IMPL_SRC)),$(OBJ_DIR)/$(UI_RAYGUI_IMPL_SRC:.c=.o),)
+APP_OBJS        := $(patsubst %.c,$(OBJ_DIR)/%.o,$(APP_SRCS))
+TEST_OBJS       := $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRCS))
+UI_SMOKE_OBJ    := $(OBJ_DIR)/$(UI_SMOKE_SRC:.c=.o)
+FUZZ_BINS       := $(patsubst fuzz/%.c,$(BIN_DIR)/%$(EXE_EXT),$(FUZZ_SRCS))
 
 ifeq ($(TARGET),windows)
   WIN_RES_OBJ := $(OBJ_DIR)/assets/rata-workspace.res.o
+  SIGN_TOOL_LIBS := -ladvapi32
 else
   WIN_RES_OBJ :=
+  SIGN_TOOL_LIBS :=
 endif
 
-.PHONY: all app test ui-smoke fuzz-build fuzz-test fuzz-libfuzzer check-layering check icons install uninstall clean info
+.PHONY: all app test ui-smoke fuzz-build fuzz-test fuzz-libfuzzer check-layering check icons sign-tool install uninstall clean info
 
 all: app
 
 app: $(APP_BIN)
 
-$(APP_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(UI_OBJS) $(UI_RAYGUI_OBJ) $(APP_OBJS) $(WIN_RES_OBJ)
+$(APP_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(MONOCYPHER_OBJS) $(UI_OBJS) $(UI_RAYGUI_OBJ) $(APP_OBJS) $(WIN_RES_OBJ)
 	@mkdir -p $(dir $@)
 	$(CC) $(APP_LDFLAGS) $^ -o $@ $(RAYLIB_LIBS) $(PLATFORM_LIBS) $(MATH_LIB)
 
-GEN_ICON_BIN := $(BIN_DIR)/gen_icon$(EXE_EXT)
+GEN_ICON_BIN  := $(BIN_DIR)/gen_icon$(EXE_EXT)
+SIGN_TOOL_BIN := $(BIN_DIR)/rata-sign$(EXE_EXT)
 
 $(GEN_ICON_BIN): tools/gen_icon.c
 	@mkdir -p $(dir $@)
@@ -177,6 +184,12 @@ $(GEN_ICON_BIN): tools/gen_icon.c
 
 icons: $(GEN_ICON_BIN)
 	./$(GEN_ICON_BIN)
+
+$(SIGN_TOOL_BIN): tools/rata_sign.c $(CORE_OBJS) $(ENGINE_OBJS) $(MONOCYPHER_OBJS)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $< $(CORE_OBJS) $(ENGINE_OBJS) $(MONOCYPHER_OBJS) $(LDFLAGS) -o $@ $(SIGN_TOOL_LIBS) $(MATH_LIB)
+
+sign-tool: $(SIGN_TOOL_BIN)
 
 $(OBJ_DIR)/assets/rata-workspace.res.o: assets/rata-workspace.rc assets/rata-workspace.ico VERSION
 	@mkdir -p $(dir $@)
@@ -189,7 +202,11 @@ $(OBJ_DIR)/src/core/%.o: src/core/%.c
 
 $(OBJ_DIR)/src/engines/%.o: src/engines/%.c
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
+	$(CC) $(ENGINE_CFLAGS) -MMD -MP -c $< -o $@
+
+$(OBJ_DIR)/vendor/monocypher/%.o: vendor/monocypher/%.c
+	@mkdir -p $(dir $@)
+	$(CC) $(VENDOR_CRYPTO_CFLAGS) -MMD -MP -c $< -o $@
 
 $(OBJ_DIR)/src/ui/ui_raygui_impl.o: src/ui/ui_raygui_impl.c
 	@mkdir -p $(dir $@)
@@ -211,8 +228,8 @@ $(OBJ_DIR)/tests/%.o: tests/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
 
-# Tests link ONLY core + engines (no raylib / no UI), verifying layering at link time
-$(TEST_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(TEST_OBJS)
+# Tests link ONLY core + engines + vendored Monocypher (no raylib / no UI), verifying layering at link time
+$(TEST_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(MONOCYPHER_OBJS) $(TEST_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(LDFLAGS) $^ -o $@ $(MATH_LIB)
 
@@ -220,7 +237,7 @@ test: $(TEST_BIN)
 	./$(TEST_BIN)
 
 # UI smoke test renders all RataWave tabs, pole clamping, Coming Soon, and About dialog
-$(UI_SMOKE_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(UI_OBJS) $(UI_RAYGUI_OBJ) $(UI_SMOKE_OBJ)
+$(UI_SMOKE_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(MONOCYPHER_OBJS) $(UI_OBJS) $(UI_RAYGUI_OBJ) $(UI_SMOKE_OBJ)
 	@mkdir -p $(dir $@)
 	$(CC) $(APP_LDFLAGS) $^ -o $@ $(RAYLIB_LIBS) $(PLATFORM_LIBS) $(MATH_LIB)
 
@@ -232,9 +249,9 @@ ui-smoke: $(UI_SMOKE_BIN)
 	fi
 
 # Standalone fuzz harnesses (work with gcc + ASan/UBSan or MinGW)
-$(BIN_DIR)/fuzz_%$(EXE_EXT): fuzz/fuzz_%.c $(CORE_OBJS) $(ENGINE_OBJS)
+$(BIN_DIR)/fuzz_%$(EXE_EXT): fuzz/fuzz_%.c $(CORE_OBJS) $(ENGINE_OBJS) $(MONOCYPHER_OBJS)
 	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) -DFUZZ_STANDALONE $< $(CORE_OBJS) $(ENGINE_OBJS) $(LDFLAGS) -o $@ $(MATH_LIB)
+	$(CC) $(CFLAGS) -DFUZZ_STANDALONE $< $(CORE_OBJS) $(ENGINE_OBJS) $(MONOCYPHER_OBJS) $(LDFLAGS) -o $@ $(MATH_LIB)
 
 fuzz-build: $(FUZZ_BINS)
 
@@ -252,18 +269,18 @@ fuzz-libfuzzer:
 		name=$$(basename $$src .c); \
 		bin="$(BUILD_DIR)/libfuzzer/$$name"; \
 		echo "Building libFuzzer target: $$bin"; \
-		clang -std=c11 $(WARN_FLAGS) $(VER_DEFS) -g -O1 -Isrc -fsanitize=fuzzer,address,undefined \
-			$$src $(CORE_SRCS) $(ENGINE_SRCS) -o $$bin $(MATH_LIB) || exit 1; \
+		clang -std=c11 $(WARN_FLAGS) $(VER_DEFS) -g -O1 -Isrc -isystem vendor/monocypher -fsanitize=fuzzer,address,undefined \
+			$$src $(CORE_SRCS) $(ENGINE_SRCS) $(MONOCYPHER_SRCS) -o $$bin $(MATH_LIB) || exit 1; \
 		./$$bin -max_total_time=$(FUZZ_TIME) -max_len=1024 || exit 1; \
 	done
 
 # Verify strict architectural layering and language constraints
 check-layering:
 	@echo "Checking strict layering rules..."
-	@if grep -rnE '#\s*include\s*["<](engines/|ui/|app/|raylib\.h|raygui\.h|complex\.h)' src/core/ 2>/dev/null; then \
+	@if grep -rnE '#\s*include\s*["<](engines/|ui/|app/|raylib\.h|raygui\.h|complex\.h|monocypher)' src/core/ 2>/dev/null; then \
 		echo "ERROR: src/core/ violated layering or <complex.h> ban!"; exit 1; \
 	fi
-	@if grep -rnE '#\s*include\s*["<](ui/|app/|raylib\.h|raygui\.h|complex\.h)' src/engines/ 2>/dev/null; then \
+	@if grep -rnE '#\s*include\s*["<](ui/|app/|raylib\.h|raygui\.h|complex\.h|windows\.h|winhttp\.h|wincred\.h)' src/engines/ 2>/dev/null; then \
 		echo "ERROR: src/engines/ violated layering or <complex.h> ban!"; exit 1; \
 	fi
 	@if grep -rnE '#\s*include\s*["<].*\.c[">]' tests/ 2>/dev/null; then \
@@ -289,6 +306,7 @@ install: app
 	install -m 644 assets/rata-workspace.svg "$(PREFIX)/share/icons/hicolor/scalable/apps/rata-workspace.svg"
 	install -m 644 vendor/raygui/LICENSE "$(PREFIX)/share/licenses/rata-workspace/raygui-LICENSE.txt"
 	install -m 644 vendor/jetbrains-mono/OFL.txt "$(PREFIX)/share/licenses/rata-workspace/jetbrains-mono-OFL.txt"
+	install -m 644 vendor/monocypher/LICENCE.md "$(PREFIX)/share/licenses/rata-workspace/monocypher-LICENCE.txt"
 
 uninstall:
 	rm -f "$(PREFIX)/bin/rata-workspace$(EXE_EXT)"
