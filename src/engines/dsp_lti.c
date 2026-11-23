@@ -292,6 +292,15 @@ RataStatus dsp_lti_freqz(const RataLti *sys,
 
         cplx h = cplx_div(num, den);
         double m = cplx_abs(h);
+        if (!isfinite(m) || m >= pole_cap_mag) {
+            out->has_pole_on_grid = true;
+            out->H[k] = cplx_make(pole_cap_mag, 0.0);
+            out->mag[k] = pole_cap_mag;
+            out->mag_db[k] = pole_cap_db;
+            out->phase_rad[k] = isfinite(cplx_arg(h)) ? cplx_arg(h) : 0.0;
+            out->group_delay[k] = 0.0;
+            continue;
+        }
         out->H[k] = h;
         out->mag[k] = m;
         if (m <= 0.0) {

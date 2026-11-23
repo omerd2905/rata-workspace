@@ -70,7 +70,7 @@ void ui_ratawave_draw_lti_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
     }
     y += 48.0f;
 
-    DrawText("Classic LTI Presets:", (int)x, (int)y, 11, t->text_muted);
+    ui_draw_text(t, "Classic LTI Presets:", x, y, 12.0f, t->text_muted);
     y += 16.0f;
     float bw = (w - 4.0f) * 0.5f;
     if (ui_button((Rectangle){x, y, bw, 24.0f}, "1st-Ord LP", false, t)) {
@@ -98,13 +98,20 @@ void ui_ratawave_draw_lti_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
         ui_plot_view_reset(&st->view_lti_pz); ui_plot_view_reset(&st->view_lti_mag);
         ui_plot_view_reset(&st->view_lti_time);
     }
-    y += 32.0f;
+    y += 28.0f;
+    if (ui_button((Rectangle){x, y, w, 24.0f}, "Oscillator (Unit-Circle Poles |p|=1)", false, t)) {
+        snprintf(st->lti_b_str, sizeof(st->lti_b_str), "1");
+        snprintf(st->lti_a_str, sizeof(st->lti_a_str), "1, 0, 1");
+        ui_plot_view_reset(&st->view_lti_pz); ui_plot_view_reset(&st->view_lti_mag);
+        ui_plot_view_reset(&st->view_lti_time);
+    }
+    y += 30.0f;
 
     static const char *rmodes[4] = {"Freqz", "h[n]", "s[n]", "y[n]"};
     if (ui_segmented_tabs((Rectangle){x, y, w, 24.0f}, rmodes, 4, &st->lti_right_mode, t)) {
         ui_plot_view_reset(&st->view_lti_time);
     }
-    y += 32.0f;
+    y += 30.0f;
 
     if (st->lti_right_mode == 0) {
         if (ui_toggle_chip((Rectangle){x, y, bw, 24.0f}, "Mag dB", &st->lti_db, t)) {
@@ -116,7 +123,7 @@ void ui_ratawave_draw_lti_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
             ui_plot_view_reset(&st->view_lti_mag);
             ui_plot_view_reset(&st->view_lti_phase);
         }
-        y += 32.0f;
+        y += 30.0f;
     } else if (st->lti_right_mode == 1 || st->lti_right_mode == 2) {
         double rl = (double)st->lti_resp_len;
         if (ui_slider_row((Rectangle){x, y, w, 34.0f}, "Response Length", "samples",
@@ -124,7 +131,7 @@ void ui_ratawave_draw_lti_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
             st->lti_resp_len = (int32_t)round(rl);
             ui_plot_view_reset(&st->view_lti_time);
         }
-        y += 40.0f;
+        y += 38.0f;
     }
 
     /* Parse coefficients and run pole-zero analysis */
@@ -164,19 +171,19 @@ void ui_ratawave_draw_lti_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
     } else {
         snprintf(s2, sizeof(s2), "DC Gain H(1) = inf (pole at z=1)");
     }
-    DrawText("Pole-Zero Summary:", (int)x, (int)y, 12, t->accent);
-    DrawText(s1, (int)x, (int)y + 18, 11, t->text_primary);
-    DrawText(s2, (int)x, (int)y + 34, 11, t->text_secondary);
+    ui_draw_text(t, "Pole-Zero Summary:", x, y, 13.0f, t->accent);
+    ui_draw_text(t, s1, x, y + 18.0f, 12.0f, t->text_primary);
+    ui_draw_text(t, s2, x, y + 34.0f, 12.0f, t->text_secondary);
 
     float list_y = y + 54.0f;
     size_t max_show = (pz.num_poles < 6u) ? pz.num_poles : 6u;
     for (size_t i = 0u; i < max_show && list_y < left.y + left.height - 16.0f; ++i) {
         char pstr[80];
-        snprintf(pstr, sizeof(pstr), "p%zu = %.3f %+.3fj  (|p|=%.3f)",
+        snprintf(pstr, sizeof(pstr), "p%zu = %.3f %+.3fj (|p|=%.3f)",
                  i + 1u, pz.poles[i].re, pz.poles[i].im, cplx_abs(pz.poles[i]));
-        DrawText(pstr, (int)x, (int)list_y, 11,
-                 (cplx_abs(pz.poles[i]) >= 1.0 - 1.0e-6) ? t->danger : t->text_secondary);
-        list_y += 15.0f;
+        ui_draw_text(t, pstr, x, list_y, 12.0f,
+                     (cplx_abs(pz.poles[i]) >= 1.0 - 1.0e-6) ? t->danger : t->text_secondary);
+        list_y += 16.0f;
     }
 
     /* Right side top: formula + stability banner */
@@ -212,9 +219,16 @@ void ui_ratawave_draw_lti_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
     Rectangle resp_r = {right.x + pz_w + 8.0f, body_y, resp_w, body_h};
     if (st->lti_right_mode == 0) {
         RataFreqz fz;
-        if (dsp_lti_freqz(&sys, 512u, false, -100.0, &fz, ctx->frame_arena) == RATA_OK) {
-            float mh = resp_r.height * 0.54f;
-            float ph = resp_r.height - mh - 8.0f;
+        if (dsp_lti_freqz(&sys, 513u, false, -100.0, &fz, ctx->frame_arena) == RATA_OK) {
+            float clamp_h = fz.has_pole_on_grid ? 28.0f : 0.0f;
+            if (fz.has_pole_on_grid) {
+                ui_draw_banner((Rectangle){resp_r.x, resp_r.y, resp_r.width, 24.0f},
+                               "Clamped at +120 dB (1e6): frequency grid hit/approached a unit-circle pole (true peak -> inf).",
+                               BANNER_WARN, t);
+            }
+            float avail_h = resp_r.height - clamp_h;
+            float mh = avail_h * 0.54f;
+            float ph = avail_h - mh - 8.0f;
             st->view_lti_mag.log_x = st->lti_log_x;
             st->view_lti_phase.log_x = st->lti_log_x;
             PlotConfig mcfg = {
@@ -225,7 +239,7 @@ void ui_ratawave_draw_lti_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
             };
             PlotTrace mtr = {fz.freq_hz, st->lti_db ? fz.mag_db : fz.mag, fz.len,
                              "|H(f)|", t->traces[0], PLOT_LINE, 2.0f};
-            ui_plot_draw((Rectangle){resp_r.x, resp_r.y, resp_r.width, mh},
+            ui_plot_draw((Rectangle){resp_r.x, resp_r.y + clamp_h, resp_r.width, mh},
                          &mcfg, &st->view_lti_mag, &mtr, 1u, NULL, 0u, t);
 
             PlotConfig pcfg = {
@@ -236,7 +250,7 @@ void ui_ratawave_draw_lti_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
             };
             PlotTrace ptr = {fz.freq_hz, fz.phase_rad, fz.len,
                              "angle(H)", t->traces[1], PLOT_LINE, 1.8f};
-            ui_plot_draw((Rectangle){resp_r.x, resp_r.y + mh + 8.0f, resp_r.width, ph},
+            ui_plot_draw((Rectangle){resp_r.x, resp_r.y + clamp_h + mh + 8.0f, resp_r.width, ph},
                          &pcfg, &st->view_lti_phase, &ptr, 1u, NULL, 0u, t);
         }
     } else {
@@ -429,9 +443,9 @@ void ui_ratawave_draw_filter_tab(RataWaveState *st, Rectangle area, RataWorkspac
     y += 38.0f;
 
     char summary[96];
-    snprintf(summary, sizeof(summary), "Coeffs: nb = %zu, na = %zu (fs = %.4g Hz)",
+    snprintf(summary, sizeof(summary), "Coeffs: nb=%zu, na=%zu (fs=%.4g Hz)",
              sys.nb, sys.na, sys.fs);
-    DrawText(summary, (int)x, (int)y, 11, t->text_secondary);
+    ui_draw_text(t, summary, x, y, 12.0f, t->text_secondary);
 
     /* Right side: formula + magnitude plot + aux plot */
     const char *f_markup =
@@ -444,8 +458,14 @@ void ui_ratawave_draw_filter_tab(RataWaveState *st, Rectangle area, RataWorkspac
                     f_markup, 14.0f, t, ctx->frame_arena);
 
     RataFreqz fz;
-    if (dsp_lti_freqz(&sys, 512u, false, -100.0, &fz, ctx->frame_arena) == RATA_OK) {
-        float avail_h = right.height - 62.0f;
+    if (dsp_lti_freqz(&sys, 513u, false, -100.0, &fz, ctx->frame_arena) == RATA_OK) {
+        float clamp_h = fz.has_pole_on_grid ? 28.0f : 0.0f;
+        if (fz.has_pole_on_grid) {
+            ui_draw_banner((Rectangle){right.x, right.y + 62.0f, right.width, 24.0f},
+                           "Clamped at +120 dB (1e6): frequency grid hit/approached a unit-circle pole.",
+                           BANNER_WARN, t);
+        }
+        float avail_h = right.height - 62.0f - clamp_h;
         float top_h = avail_h * 0.52f;
         float bot_h = avail_h - top_h - 8.0f;
 
@@ -470,10 +490,10 @@ void ui_ratawave_draw_filter_tab(RataWaveState *st, Rectangle area, RataWorkspac
         };
         PlotTrace mtr = {fz.freq_hz, st->flt_db ? fz.mag_db : fz.mag, fz.len,
                          "|H(f)|", t->traces[0], PLOT_LINE, 2.2f};
-        ui_plot_draw((Rectangle){right.x, right.y + 62.0f, right.width, top_h},
+        ui_plot_draw((Rectangle){right.x, right.y + 62.0f + clamp_h, right.width, top_h},
                      &mcfg, &st->view_flt_mag, &mtr, 1u, mk, nmk, t);
 
-        Rectangle bot_r = {right.x, right.y + 62.0f + top_h + 8.0f, right.width, bot_h};
+        Rectangle bot_r = {right.x, right.y + 62.0f + clamp_h + top_h + 8.0f, right.width, bot_h};
         if (st->flt_aux_view == 0) {
             st->view_flt_aux.equal_aspect = false;
             st->view_flt_aux.log_x = st->flt_log_x;

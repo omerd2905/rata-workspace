@@ -15,26 +15,28 @@ RataStatus dsp_alias_frequency(double f0_hz,
                                double fs_hz,
                                double *aliased_hz_out,
                                bool *is_aliased_out,
-                               bool *phase_inverted_out) {
+                               bool *phase_negated_out) {
     if (!isfinite(f0_hz) || !isfinite(fs_hz) || f0_hz < 0.0 || fs_hz <= 0.0 ||
-        aliased_hz_out == NULL || is_aliased_out == NULL || phase_inverted_out == NULL) {
+        aliased_hz_out == NULL || is_aliased_out == NULL || phase_negated_out == NULL) {
         return RATA_ERR_INVALID_ARG;
     }
 
     double nyq = 0.5 * fs_hz;
     *is_aliased_out = (f0_hz > nyq + 1.0e-12);
 
+    /* Reduce arbitrary f0 modulo fs into [0, fs). */
     double rem = fmod(f0_hz, fs_hz);
     if (rem < 0.0) {
         rem += fs_hz;
     }
 
+    /* For fs/2 < rem < fs: cos(2*pi*rem*n/fs + phi) == cos(2*pi*(fs - rem)*n/fs - phi). */
     if (rem > nyq) {
         *aliased_hz_out = fs_hz - rem;
-        *phase_inverted_out = true;
+        *phase_negated_out = true;
     } else {
         *aliased_hz_out = rem;
-        *phase_inverted_out = false;
+        *phase_negated_out = false;
     }
     return RATA_OK;
 }
@@ -58,12 +60,16 @@ RataStatus dsp_sampling_simulate(const RataSamplingConfig *cfg,
                                         cfg->fs_hz,
                                         &out->aliased_freq_hz,
                                         &out->is_aliased,
-                                        &out->phase_inverted);
+                                        &out->phase_negated);
     if (st != RATA_OK) {
         return st;
     }
     out->nyquist_freq_hz = 0.5 * cfg->fs_hz;
     out->nyquist_rate_hz = 2.0 * cfg->f0_hz;
+    out->aliased_phase_rad = out->phase_negated ? -cfg->phase_rad : cfg->phase_rad;
+    if (fabs(out->aliased_phase_rad) < 1.0e-12) {
+        out->aliased_phase_rad = 0.0;
+    }
 
     double est_samples = floor(cfg->duration_s * cfg->fs_hz + 1.0e-9) + 1.0;
     if (!isfinite(est_samples) || est_samples < 1.0 || est_samples > 4096.0) {
@@ -92,18 +98,14 @@ RataStatus dsp_sampling_simulate(const RataSamplingConfig *cfg,
         out->x_samples[n] = cfg->amp * cos(RATA_TWO_PI * cfg->f0_hz * tn + cfg->phase_rad);
     }
 
-    /* For cos(2*pi*f0*t + phi): if folded into odd Nyquist zone, apparent cosine has -phi. */
-    double alias_phase = out->phase_inverted ? -cfg->phase_rad : cfg->phase_rad;
-
-    /* Use extra padding samples on both sides for clean Whittaker-Shannon sinc interpolation
-     * inside [0, duration_s] without severe boundary Gibbs distortion. */
+    /* Pad samples on both ends for accurate Whittaker-Shannon sinc interpolation inside [0, T]. */
     const int32_t pad = 32;
     for (size_t i = 0u; i < nc; ++i) {
         double t = cfg->duration_s * (double)i / (double)(nc - 1u);
         out->t_cont[i] = t;
         out->x_analog[i] = cfg->amp * cos(RATA_TWO_PI * cfg->f0_hz * t + cfg->phase_rad);
         out->x_alias_exact[i] =
-            cfg->amp * cos(RATA_TWO_PI * out->aliased_freq_hz * t + alias_phase);
+            cfg->amp * cos(RATA_TWO_PI * out->aliased_freq_hz * t + out->aliased_phase_rad);
 
         double recon = 0.0;
         double u = cfg->fs_hz * t;

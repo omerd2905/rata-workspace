@@ -63,8 +63,8 @@ void ui_ratawave_draw_fft_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
     }
     y += 42.0f;
 
-    DrawText("Window Function:", (int)x, (int)y, 12, t->text_secondary);
-    y += 16.0f;
+    ui_draw_text(t, "Window Function:", x, y, 13.0f, t->text_secondary);
+    y += 17.0f;
     static const char *win_labels[4] = {"Rect", "Hann", "Hamm", "Blkmn"};
     if (ui_segmented_tabs((Rectangle){x, y, w, 24.0f}, win_labels, 4, &st->fft_window, t)) {
         ui_plot_view_reset(&st->view_fft_mag);
@@ -168,16 +168,16 @@ void ui_ratawave_draw_fft_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
     /* Info readout on left panel */
     bool is_pow2 = fft_is_power_of_two(N);
     char info1[96], info2[96], info3[96];
-    snprintf(info1, sizeof(info1), "FFT Path: %s",
+    snprintf(info1, sizeof(info1), "FFT: %s",
              is_pow2 ? "Radix-2 Cooley-Tukey" : "Bluestein Arbitrary-N");
-    snprintf(info2, sizeof(info2), "Resolution df = %.4g Hz (N = %zu)", sig.fs / (double)N, N);
-    snprintf(info3, sizeof(info3), "Peak at %.4g %s (%.4g %s)",
+    snprintf(info2, sizeof(info2), "df = %.4g Hz  (N = %zu)", sig.fs / (double)N, N);
+    snprintf(info3, sizeof(info3), "Peak: %.4g %s (%.4g%s)",
              faxis[peak_i], st->fft_norm_omega ? "*pi rad" : "Hz",
-             peak_mag, st->fft_db ? "dB" : "");
-    DrawText("Spectrum Info:", (int)x, (int)y, 12, t->accent);
-    DrawText(info1, (int)x, (int)y + 18, 11, is_pow2 ? t->success : t->warning);
-    DrawText(info2, (int)x, (int)y + 34, 11, t->text_primary);
-    DrawText(info3, (int)x, (int)y + 50, 11, t->text_secondary);
+             peak_mag, st->fft_db ? " dB" : "");
+    ui_draw_text(t, "Spectrum Info:", x, y, 13.0f, t->accent);
+    ui_draw_text(t, info1, x, y + 18.0f, 12.0f, is_pow2 ? t->success : t->warning);
+    ui_draw_text(t, info2, x, y + 34.0f, 12.0f, t->text_primary);
+    ui_draw_text(t, info3, x, y + 50.0f, 12.0f, t->text_secondary);
 
     /* Right side: formula + magnitude plot + phase plot + assumption banner */
     ui_formula_card((Rectangle){right.x, right.y, right.width, 58.0f},
@@ -255,7 +255,7 @@ void ui_ratawave_draw_sampling_tab(RataWaveState *st, Rectangle area, RataWorksp
     }
     y += 44.0f;
 
-    DrawText("Textbook Scenarios:", (int)x, (int)y, 11, t->text_muted);
+    ui_draw_text(t, "Textbook Scenarios:", x, y, 12.0f, t->text_muted);
     y += 16.0f;
     float bw = (w - 4.0f) * 0.5f;
     if (ui_button((Rectangle){x, y, bw, 24.0f}, "Well-Sampled", false, t)) {
@@ -268,11 +268,11 @@ void ui_ratawave_draw_sampling_tab(RataWaveState *st, Rectangle area, RataWorksp
     }
     y += 28.0f;
     if (ui_button((Rectangle){x, y, bw, 24.0f}, "Alias 800/1k", false, t)) {
-        st->samp_f0_hz = 800.0; st->samp_fs_hz = 1000.0; st->samp_phase_rad = 0.4;
+        st->samp_f0_hz = 800.0; st->samp_fs_hz = 1000.0; st->samp_phase_rad = 0.7;
         ui_plot_view_reset(&st->view_sampling);
     }
     if (ui_button((Rectangle){x + bw + 4.0f, y, bw, 24.0f}, "2nd Fold 1.3k", false, t)) {
-        st->samp_f0_hz = 1300.0; st->samp_fs_hz = 1000.0; st->samp_phase_rad = 0.4;
+        st->samp_f0_hz = 1300.0; st->samp_fs_hz = 1000.0; st->samp_phase_rad = 0.7;
         ui_plot_view_reset(&st->view_sampling);
     }
     y += 34.0f;
@@ -300,13 +300,14 @@ void ui_ratawave_draw_sampling_tab(RataWaveState *st, Rectangle area, RataWorksp
     snprintf(r1, sizeof(r1), "Nyquist Freq (fs/2): %.4g Hz", res.nyquist_freq_hz);
     snprintf(r2, sizeof(r2), "Nyquist Rate (2*f0): %.4g Hz", res.nyquist_rate_hz);
     snprintf(r3, sizeof(r3), "Apparent Freq:       %.4g Hz", res.aliased_freq_hz);
-    snprintf(r4, sizeof(r4), "Phase Inverted:      %s", res.phase_inverted ? "YES (odd zone)" : "No");
+    snprintf(r4, sizeof(r4), "Aliased Phase: %.3g rad (%s)",
+             res.aliased_phase_rad, res.phase_negated ? "phi -> -phi" : "+phi");
 
-    DrawText("Nyquist Analysis:", (int)x, (int)y, 12, t->accent);
-    DrawText(r1, (int)x, (int)y + 18, 12, t->text_primary);
-    DrawText(r2, (int)x, (int)y + 36, 12, t->text_primary);
-    DrawText(r3, (int)x, (int)y + 54, 12, res.is_aliased ? t->danger : t->success);
-    DrawText(r4, (int)x, (int)y + 72, 12, res.phase_inverted ? t->warning : t->text_secondary);
+    ui_draw_text(t, "Nyquist Analysis:", x, y, 13.0f, t->accent);
+    ui_draw_text(t, r1, x, y + 18.0f, 12.0f, t->text_primary);
+    ui_draw_text(t, r2, x, y + 36.0f, 12.0f, t->text_primary);
+    ui_draw_text(t, r3, x, y + 54.0f, 12.0f, res.is_aliased ? t->danger : t->success);
+    ui_draw_text(t, r4, x, y + 72.0f, 12.0f, res.phase_negated ? t->warning : t->text_secondary);
 
     ui_formula_card((Rectangle){right.x, right.y, right.width, 58.0f},
                     "Nyquist-Shannon Sampling & Reconstruction",
@@ -316,9 +317,9 @@ void ui_ratawave_draw_sampling_tab(RataWaveState *st, Rectangle area, RataWorksp
     char banner[192];
     if (res.is_aliased) {
         snprintf(banner, sizeof(banner),
-                 "ALIASING DETECTED: f0 = %.4g Hz > fs/2 = %.4g Hz -> folds to %.4g Hz%s",
+                 "ALIASING: f0 = %.4g Hz > fs/2 = %.4g Hz -> %.4g Hz, phase = %.3g rad (%s)",
                  st->samp_f0_hz, res.nyquist_freq_hz, res.aliased_freq_hz,
-                 res.phase_inverted ? " (phase inverted)" : "");
+                 res.aliased_phase_rad, res.phase_negated ? "negated: phi -> -phi" : "preserved: +phi");
     } else {
         snprintf(banner, sizeof(banner),
                  "Nyquist Satisfied: f0 = %.4g Hz <= fs/2 = %.4g Hz (exact reconstruction possible).",

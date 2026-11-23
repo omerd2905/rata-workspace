@@ -10,7 +10,7 @@
 typedef struct RataSamplingConfig {
     double f0_hz;        /* Analog tone frequency (Hz), >= 0 */
     double amp;          /* Amplitude */
-    double phase_rad;    /* Initial phase (rad) */
+    double phase_rad;    /* Initial phase phi (rad) for A*cos(2*pi*f0*t + phi) */
     double fs_hz;        /* Sampling frequency (Hz), > 0 */
     double duration_s;   /* Time window duration (s), > 0 */
     size_t cont_points;  /* Continuous-grid resolution (e.g. 400..1000) */
@@ -22,8 +22,9 @@ typedef struct RataSamplingResult {
     double nyquist_freq_hz;   /* fs / 2 */
     double nyquist_rate_hz;   /* 2 * f0 */
     double aliased_freq_hz;   /* Apparent frequency in [0, fs/2] */
+    double aliased_phase_rad; /* Apparent phase (+phi in even Nyquist zone, -phi in odd zone) */
     bool is_aliased;          /* True when f0 > fs/2 */
-    bool phase_inverted;      /* True when folded into odd Nyquist zone */
+    bool phase_negated;       /* True when folded into odd Nyquist zone (phi -> -phi, NOT +pi) */
 
     /* Continuous-time grid (length `cont_len`). */
     size_t cont_len;
@@ -38,12 +39,14 @@ typedef struct RataSamplingResult {
     double *x_samples;
 } RataSamplingResult;
 
-/* Computes exact folded frequency in [0, fs/2] and phase-inversion flag. */
+/* Computes exact folded frequency in [0, fs/2] and phase-negation flag for cos(2*pi*f0*t + phi).
+ * When (f0 mod fs) > fs/2, cos(2*pi*f0*n/fs + phi) == cos(2*pi*(fs - r)*n/fs - phi),
+ * so phase is negated (phi -> -phi, NOT shifted by pi). */
 RataStatus dsp_alias_frequency(double f0_hz,
                                double fs_hz,
                                double *aliased_hz_out,
                                bool *is_aliased_out,
-                               bool *phase_inverted_out);
+                               bool *phase_negated_out);
 
 /* Runs sampling, aliasing, and Whittaker-Shannon sinc reconstruction demo.
  * Allocates all waveform arrays in `arena` (owned by `arena`). */
