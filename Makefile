@@ -116,7 +116,7 @@ UI_OBJS          := $(patsubst %.c,$(OBJ_DIR)/%.o,$(UI_SRCS))
 UI_RAYGUI_OBJ    := $(if $(wildcard $(UI_RAYGUI_IMPL_SRC)),$(OBJ_DIR)/$(UI_RAYGUI_IMPL_SRC:.c=.o),)
 APP_OBJS         := $(patsubst %.c,$(OBJ_DIR)/%.o,$(APP_SRCS))
 TEST_OBJS        := $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRCS))
-FUZZ_BINS        := $(patsubst fuzz/%.c,$(BIN_DIR)/fuzz_%$(EXE_EXT),$(FUZZ_SRCS))
+FUZZ_BINS        := $(patsubst fuzz/%.c,$(BIN_DIR)/%$(EXE_EXT),$(FUZZ_SRCS))
 
 .PHONY: all app test fuzz-build fuzz-test fuzz-libfuzzer check-layering check clean info
 
@@ -161,7 +161,7 @@ test: $(TEST_BIN)
 	./$(TEST_BIN)
 
 # Standalone fuzz harnesses (work with gcc + ASan/UBSan or MinGW)
-$(BIN_DIR)/fuzz_%$(EXE_EXT): fuzz/%.c $(CORE_OBJS) $(ENGINE_OBJS)
+$(BIN_DIR)/fuzz_%$(EXE_EXT): fuzz/fuzz_%.c $(CORE_OBJS) $(ENGINE_OBJS)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -DFUZZ_STANDALONE $< $(CORE_OBJS) $(ENGINE_OBJS) $(LDFLAGS) -o $@ $(MATH_LIB)
 
