@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Rata Workspace
+GenericName=Electrical Engineering Toolkit
+Comment=Native C11 multi-workspace toolkit for DSP, communications, controls, digital logic, VHDL, and analog circuits
+Exec=rata-workspace
+Icon=rata-workspace
+Terminal=false
+Categories=Education;Science;Engineering;Electronics;
+Keywords=DSP;FFT;control;VHDL;SPICE;electronics;engineering;
+StartupWMClass=rata-workspace

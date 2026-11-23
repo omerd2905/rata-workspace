@@ -6,6 +6,14 @@ ifeq ($(origin CC),default)
 endif
 PKG_CONFIG ?= pkg-config
 BUILD ?= debug
+PREFIX ?= $(HOME)/.local
+
+# Single source of truth for semantic version
+VERSION := $(shell tr -d ' \r\n' < VERSION)
+VER_PARTS := $(subst ., ,$(VERSION))
+VER_MAJOR := $(word 1,$(VER_PARTS))
+VER_MINOR := $(word 2,$(VER_PARTS))
+VER_PATCH := $(word 3,$(VER_PARTS))
 
 # Detect target OS (supports native Linux, native Windows/MinGW, or Linux->Windows cross-compile)
 ifndef TARGET
@@ -15,6 +23,17 @@ ifndef TARGET
     TARGET := windows
   else
     TARGET := linux
+  endif
+endif
+
+# Windres auto-detection for Windows icon + version resource embedding
+ifeq ($(TARGET),windows)
+  ifndef WINDRES
+    ifneq (,$(findstring x86_64-w64-mingw32-,$(CC)))
+      WINDRES := x86_64-w64-mingw32-windres
+    else
+      WINDRES := windres
+    endif
   endif
 endif
 
@@ -42,12 +61,14 @@ BUILD_DIR := build/$(TARGET)-$(BUILD)
 OBJ_DIR   := $(BUILD_DIR)/obj
 BIN_DIR   := $(BUILD_DIR)
 
-APP_BIN   := $(BIN_DIR)/rata-workspace$(EXE_EXT)
-TEST_BIN  := $(BIN_DIR)/rata-tests$(EXE_EXT)
+APP_BIN      := $(BIN_DIR)/rata-workspace$(EXE_EXT)
+TEST_BIN     := $(BIN_DIR)/rata-tests$(EXE_EXT)
+UI_SMOKE_BIN := $(BIN_DIR)/ui-smoke$(EXE_EXT)
 
 # Compiler flags (strict ISO C11, zero GNU extensions)
 WARN_FLAGS   := -Wall -Wextra -Wpedantic -Werror -Wvla
-BASE_CFLAGS  := -std=c11 $(WARN_FLAGS) -Isrc
+VER_DEFS     := -DRATA_VERSION=\"$(VERSION)\"
+BASE_CFLAGS  := -std=c11 $(WARN_FLAGS) $(VER_DEFS) -Isrc
 OPT_FLAGS    :=
 SAN_FLAGS    :=
 SAN_LDFLAGS  :=
@@ -68,9 +89,18 @@ LDFLAGS  := $(SAN_LDFLAGS)
 MATH_LIB := -lm
 
 # Raylib discovery: RAYLIB_DIR > explicit RAYLIB_INC/RAYLIB_LIB > pkg-config > default
+# Set RAYLIB_STATIC=1 (default on Windows when RAYLIB_DIR is given) to link libraylib.a statically.
+ifeq ($(TARGET),windows)
+  RAYLIB_STATIC ?= 1
+else
+  RAYLIB_STATIC ?= 0
+endif
+
 ifneq ($(RAYLIB_DIR),)
   RAYLIB_CFLAGS := -isystem $(RAYLIB_DIR)/include
-  ifeq ($(TARGET),linux)
+  ifeq ($(RAYLIB_STATIC),1)
+    RAYLIB_LIBS := $(RAYLIB_DIR)/lib/libraylib.a
+  else ifeq ($(TARGET),linux)
     RAYLIB_LIBS := -L$(RAYLIB_DIR)/lib -Wl,-rpath,$(RAYLIB_DIR)/lib -lraylib
   else
     RAYLIB_LIBS := -L$(RAYLIB_DIR)/lib -lraylib
@@ -89,9 +119,12 @@ else
   endif
 endif
 
+# Static C runtime / winpthread on Windows so rata-workspace.exe is a single self-contained binary
 ifeq ($(TARGET),windows)
-  PLATFORM_LIBS := -lopengl32 -lgdi32 -lwinmm
+  APP_LDFLAGS   := $(LDFLAGS) -static -static-libgcc
+  PLATFORM_LIBS := -Wl,-Bstatic -lpthread -Wl,-Bdynamic -lopengl32 -lgdi32 -lwinmm
 else
+  APP_LDFLAGS   := $(LDFLAGS)
   PLATFORM_LIBS := -lGL -lpthread -ldl -lrt -lX11
 endif
 
@@ -100,35 +133,46 @@ UI_CFLAGS := $(CFLAGS) $(RAYLIB_CFLAGS) -isystem vendor/raygui
 RAYGUI_IMPL_CFLAGS := -std=c11 $(OPT_FLAGS) $(SAN_FLAGS) -Isrc $(RAYLIB_CFLAGS) -isystem vendor/raygui -Wno-unused-parameter -Wno-unused-function -Wno-pedantic
 
 # Source lists (explicit per layer to preserve strict layering)
-CORE_SRCS := \
-	$(wildcard src/core/*.c)
-
-ENGINE_SRCS := \
-	$(wildcard src/engines/*.c)
+CORE_SRCS := $(wildcard src/core/*.c)
+ENGINE_SRCS := $(wildcard src/engines/*.c)
 
 UI_RAYGUI_IMPL_SRC := src/ui/ui_raygui_impl.c
 UI_SRCS := $(filter-out $(UI_RAYGUI_IMPL_SRC),$(wildcard src/ui/*.c))
 APP_SRCS := $(wildcard src/app/*.c)
-TEST_SRCS := $(wildcard tests/*.c)
+
+UI_SMOKE_SRC := tests/ui_smoke.c
+TEST_SRCS := $(filter-out $(UI_SMOKE_SRC),$(wildcard tests/*.c))
 FUZZ_SRCS := $(wildcard fuzz/*.c)
 
-CORE_OBJS        := $(patsubst %.c,$(OBJ_DIR)/%.o,$(CORE_SRCS))
-ENGINE_OBJS      := $(patsubst %.c,$(OBJ_DIR)/%.o,$(ENGINE_SRCS))
-UI_OBJS          := $(patsubst %.c,$(OBJ_DIR)/%.o,$(UI_SRCS))
-UI_RAYGUI_OBJ    := $(if $(wildcard $(UI_RAYGUI_IMPL_SRC)),$(OBJ_DIR)/$(UI_RAYGUI_IMPL_SRC:.c=.o),)
-APP_OBJS         := $(patsubst %.c,$(OBJ_DIR)/%.o,$(APP_SRCS))
-TEST_OBJS        := $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRCS))
-FUZZ_BINS        := $(patsubst fuzz/%.c,$(BIN_DIR)/%$(EXE_EXT),$(FUZZ_SRCS))
+CORE_OBJS     := $(patsubst %.c,$(OBJ_DIR)/%.o,$(CORE_SRCS))
+ENGINE_OBJS   := $(patsubst %.c,$(OBJ_DIR)/%.o,$(ENGINE_SRCS))
+UI_OBJS       := $(patsubst %.c,$(OBJ_DIR)/%.o,$(UI_SRCS))
+UI_RAYGUI_OBJ := $(if $(wildcard $(UI_RAYGUI_IMPL_SRC)),$(OBJ_DIR)/$(UI_RAYGUI_IMPL_SRC:.c=.o),)
+APP_OBJS      := $(patsubst %.c,$(OBJ_DIR)/%.o,$(APP_SRCS))
+TEST_OBJS     := $(patsubst %.c,$(OBJ_DIR)/%.o,$(TEST_SRCS))
+UI_SMOKE_OBJ  := $(OBJ_DIR)/$(UI_SMOKE_SRC:.c=.o)
+FUZZ_BINS     := $(patsubst fuzz/%.c,$(BIN_DIR)/%$(EXE_EXT),$(FUZZ_SRCS))
 
-.PHONY: all app test fuzz-build fuzz-test fuzz-libfuzzer check-layering check clean info
+ifeq ($(TARGET),windows)
+  WIN_RES_OBJ := $(OBJ_DIR)/assets/rata-workspace.res.o
+else
+  WIN_RES_OBJ :=
+endif
+
+.PHONY: all app test ui-smoke fuzz-build fuzz-test fuzz-libfuzzer check-layering check install uninstall clean info
 
 all: app
 
 app: $(APP_BIN)
 
-$(APP_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(UI_OBJS) $(UI_RAYGUI_OBJ) $(APP_OBJS)
+$(APP_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(UI_OBJS) $(UI_RAYGUI_OBJ) $(APP_OBJS) $(WIN_RES_OBJ)
 	@mkdir -p $(dir $@)
-	$(CC) $(LDFLAGS) $^ -o $@ $(RAYLIB_LIBS) $(PLATFORM_LIBS) $(MATH_LIB)
+	$(CC) $(APP_LDFLAGS) $^ -o $@ $(RAYLIB_LIBS) $(PLATFORM_LIBS) $(MATH_LIB)
+
+$(OBJ_DIR)/assets/rata-workspace.res.o: assets/rata-workspace.rc assets/rata-workspace.ico VERSION
+	@mkdir -p $(dir $@)
+	$(WINDRES) -DRATA_VER_MAJOR=$(VER_MAJOR) -DRATA_VER_MINOR=$(VER_MINOR) \
+		-DRATA_VER_PATCH=$(VER_PATCH) -i $< -O coff -o $@
 
 $(OBJ_DIR)/src/core/%.o: src/core/%.c
 	@mkdir -p $(dir $@)
@@ -150,6 +194,10 @@ $(OBJ_DIR)/src/app/%.o: src/app/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(UI_CFLAGS) -MMD -MP -c $< -o $@
 
+$(OBJ_DIR)/tests/ui_smoke.o: tests/ui_smoke.c
+	@mkdir -p $(dir $@)
+	$(CC) $(UI_CFLAGS) -MMD -MP -c $< -o $@
+
 $(OBJ_DIR)/tests/%.o: tests/%.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -MMD -MP -c $< -o $@
@@ -161,6 +209,18 @@ $(TEST_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(TEST_OBJS)
 
 test: $(TEST_BIN)
 	./$(TEST_BIN)
+
+# UI smoke test renders all RataWave tabs, pole clamping, Coming Soon, and About dialog
+$(UI_SMOKE_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(UI_OBJS) $(UI_RAYGUI_OBJ) $(UI_SMOKE_OBJ)
+	@mkdir -p $(dir $@)
+	$(CC) $(APP_LDFLAGS) $^ -o $@ $(RAYLIB_LIBS) $(PLATFORM_LIBS) $(MATH_LIB)
+
+ui-smoke: $(UI_SMOKE_BIN)
+	@if [ "$(TARGET)" = "linux" ] && [ -z "$$DISPLAY" ] && command -v xvfb-run >/dev/null 2>&1; then \
+		ASAN_OPTIONS=detect_leaks=0 xvfb-run -a -s "-screen 0 1280x800x24" ./$(UI_SMOKE_BIN); \
+	else \
+		ASAN_OPTIONS=detect_leaks=0 ./$(UI_SMOKE_BIN); \
+	fi
 
 # Standalone fuzz harnesses (work with gcc + ASan/UBSan or MinGW)
 $(BIN_DIR)/fuzz_%$(EXE_EXT): fuzz/fuzz_%.c $(CORE_OBJS) $(ENGINE_OBJS)
@@ -183,7 +243,7 @@ fuzz-libfuzzer:
 		name=$$(basename $$src .c); \
 		bin="$(BUILD_DIR)/libfuzzer/$$name"; \
 		echo "Building libFuzzer target: $$bin"; \
-		clang -std=c11 $(WARN_FLAGS) -g -O1 -Isrc -fsanitize=fuzzer,address,undefined \
+		clang -std=c11 $(WARN_FLAGS) $(VER_DEFS) -g -O1 -Isrc -fsanitize=fuzzer,address,undefined \
 			$$src $(CORE_SRCS) $(ENGINE_SRCS) -o $$bin $(MATH_LIB) || exit 1; \
 		./$$bin -max_total_time=$(FUZZ_TIME) -max_len=1024 || exit 1; \
 	done
@@ -207,8 +267,29 @@ check-layering:
 
 check: check-layering test fuzz-test
 
+# Install / uninstall (Linux / NixOS)
+install: app
+	install -d "$(PREFIX)/bin"
+	install -d "$(PREFIX)/share/applications"
+	install -d "$(PREFIX)/share/icons/hicolor/256x256/apps"
+	install -d "$(PREFIX)/share/icons/hicolor/scalable/apps"
+	install -d "$(PREFIX)/share/licenses/rata-workspace"
+	install -m 755 "$(APP_BIN)" "$(PREFIX)/bin/rata-workspace$(EXE_EXT)"
+	install -m 644 assets/rata-workspace.desktop "$(PREFIX)/share/applications/rata-workspace.desktop"
+	install -m 644 assets/rata-workspace.png "$(PREFIX)/share/icons/hicolor/256x256/apps/rata-workspace.png"
+	install -m 644 assets/rata-workspace.svg "$(PREFIX)/share/icons/hicolor/scalable/apps/rata-workspace.svg"
+	install -m 644 vendor/raygui/LICENSE "$(PREFIX)/share/licenses/rata-workspace/raygui-LICENSE.txt"
+	install -m 644 vendor/jetbrains-mono/OFL.txt "$(PREFIX)/share/licenses/rata-workspace/jetbrains-mono-OFL.txt"
+
+uninstall:
+	rm -f "$(PREFIX)/bin/rata-workspace$(EXE_EXT)"
+	rm -f "$(PREFIX)/share/applications/rata-workspace.desktop"
+	rm -f "$(PREFIX)/share/icons/hicolor/256x256/apps/rata-workspace.png"
+	rm -f "$(PREFIX)/share/icons/hicolor/scalable/apps/rata-workspace.svg"
+	rm -rf "$(PREFIX)/share/licenses/rata-workspace"
+
 info:
-	@echo "CC=$(CC) TARGET=$(TARGET) BUILD=$(BUILD) SANITIZE=$(SANITIZE)"
+	@echo "VERSION=$(VERSION) CC=$(CC) TARGET=$(TARGET) BUILD=$(BUILD) SANITIZE=$(SANITIZE) RAYLIB_STATIC=$(RAYLIB_STATIC)"
 	@echo "RAYLIB_CFLAGS=$(RAYLIB_CFLAGS)"
 	@echo "RAYLIB_LIBS=$(RAYLIB_LIBS)"
 

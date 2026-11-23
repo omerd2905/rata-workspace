@@ -1,0 +1,45 @@
+#include <winver.h>
+
+#ifndef RATA_VER_MAJOR
+#define RATA_VER_MAJOR 0
+#endif
+#ifndef RATA_VER_MINOR
+#define RATA_VER_MINOR 1
+#endif
+#ifndef RATA_VER_PATCH
+#define RATA_VER_PATCH 0
+#endif
+
+#define RATA_RC_STR_IMPL(x) #x
+#define RATA_RC_STR(x) RATA_RC_STR_IMPL(x)
+#define RATA_RC_VERSION_STR RATA_RC_STR(RATA_VER_MAJOR) "." RATA_RC_STR(RATA_VER_MINOR) "." RATA_RC_STR(RATA_VER_PATCH)
+
+101 ICON "assets/rata-workspace.ico"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION     RATA_VER_MAJOR,RATA_VER_MINOR,RATA_VER_PATCH,0
+PRODUCTVERSION  RATA_VER_MAJOR,RATA_VER_MINOR,RATA_VER_PATCH,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "Rata Workspace"
+            VALUE "FileDescription",  "Rata Workspace - Electrical Engineering Toolkit"
+            VALUE "FileVersion",      RATA_RC_VERSION_STR
+            VALUE "InternalName",     "rata-workspace"
+            VALUE "OriginalFilename", "rata-workspace.exe"
+            VALUE "ProductName",      "Rata Workspace"
+            VALUE "ProductVersion",   RATA_RC_VERSION_STR
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x0409, 0x04B0
+    END
+END
