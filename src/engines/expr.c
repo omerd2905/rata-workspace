@@ -559,8 +559,14 @@ RataStatus expr_parse(const char *src,
     }
 
     size_t mark = rata_arena_mark(arena);
+    size_t rem_bytes = rata_arena_remaining(arena);
+    size_t max_fit = (rem_bytes > 16u) ? ((rem_bytes - 16u) / sizeof(RataExprNode)) : 0u;
+    size_t node_cap = (max_fit < RATA_EXPR_MAX_NODES) ? max_fit : RATA_EXPR_MAX_NODES;
+    if (node_cap == 0u) {
+        return RATA_ERR_OUT_OF_MEMORY;
+    }
     RataExprNode *buf = (RataExprNode *)rata_arena_alloc(
-        arena, RATA_EXPR_MAX_NODES * sizeof(RataExprNode), 8u);
+        arena, node_cap * sizeof(RataExprNode), 8u);
     if (buf == NULL) {
         return RATA_ERR_OUT_OF_MEMORY;
     }
@@ -570,7 +576,7 @@ RataStatus expr_parse(const char *src,
     parser.src = src;
     parser.len = len;
     parser.nodes = buf;
-    parser.node_cap = RATA_EXPR_MAX_NODES;
+    parser.node_cap = node_cap;
     parser.err = err_out;
 
     int32_t root = parse_comparison(&parser);

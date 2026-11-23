@@ -370,8 +370,14 @@ RataStatus formula_parse(const char *src, size_t len, FormulaTree *out, RataAren
     }
 
     size_t mark = rata_arena_mark(arena);
+    size_t rem_bytes = rata_arena_remaining(arena);
+    size_t max_fit = (rem_bytes > 16u) ? ((rem_bytes - 16u) / sizeof(FormulaNode)) : 0u;
+    size_t node_cap = (max_fit < RATA_FORMULA_MAX_NODES) ? max_fit : RATA_FORMULA_MAX_NODES;
+    if (node_cap == 0u) {
+        return RATA_ERR_OUT_OF_MEMORY;
+    }
     FormulaNode *buf = (FormulaNode *)rata_arena_alloc(
-        arena, RATA_FORMULA_MAX_NODES * sizeof(FormulaNode), 8u);
+        arena, node_cap * sizeof(FormulaNode), 8u);
     if (buf == NULL) {
         return RATA_ERR_OUT_OF_MEMORY;
     }
@@ -381,7 +387,7 @@ RataStatus formula_parse(const char *src, size_t len, FormulaTree *out, RataAren
     p.src = src;
     p.len = len;
     p.nodes = buf;
-    p.node_cap = RATA_FORMULA_MAX_NODES;
+    p.node_cap = node_cap;
 
     int32_t root = parse_row(&p, false);
     if (p.err || root < 0 || p.pos != p.len) {

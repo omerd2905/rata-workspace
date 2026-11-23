@@ -146,6 +146,9 @@ RataStatus project_file_parse(const char *text,
                               size_t len,
                               RataProjectDoc *doc_out,
                               RataArena *arena) {
+    if (doc_out != NULL) {
+        memset(doc_out, 0, sizeof(*doc_out));
+    }
     if (text == NULL || doc_out == NULL || arena == NULL) {
         return RATA_ERR_INVALID_ARG;
     }
@@ -154,7 +157,13 @@ RataStatus project_file_parse(const char *text,
     }
 
     size_t mark = rata_arena_mark(arena);
-    RataStatus st = project_doc_init(doc_out, RATA_PROJECT_MAX_ENTRIES, arena);
+    size_t rem_bytes = rata_arena_remaining(arena);
+    size_t max_fit = (rem_bytes > 16u) ? ((rem_bytes - 16u) / sizeof(RataProjectEntry)) : 0u;
+    size_t cap = (max_fit < RATA_PROJECT_MAX_ENTRIES) ? max_fit : RATA_PROJECT_MAX_ENTRIES;
+    if (cap == 0u) {
+        return RATA_ERR_OUT_OF_MEMORY;
+    }
+    RataStatus st = project_doc_init(doc_out, cap, arena);
     if (st != RATA_OK) {
         return st;
     }
@@ -288,8 +297,14 @@ RataStatus project_file_parse(const char *text,
 
     if (!saw_header) {
         rata_arena_restore(arena, mark);
+        memset(doc_out, 0, sizeof(*doc_out));
         return RATA_ERR_FORMAT;
     }
+
+    size_t buf_off = (size_t)((uint8_t *)doc_out->entries - arena->base);
+    size_t used_entries = (doc_out->count > 0u) ? doc_out->count : 1u;
+    rata_arena_restore(arena, buf_off + used_entries * sizeof(RataProjectEntry));
+    doc_out->cap = used_entries;
     return RATA_OK;
 }
 
