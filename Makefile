@@ -159,7 +159,7 @@ else
   WIN_RES_OBJ :=
 endif
 
-.PHONY: all app test ui-smoke fuzz-build fuzz-test fuzz-libfuzzer check-layering check install uninstall clean info
+.PHONY: all app test ui-smoke fuzz-build fuzz-test fuzz-libfuzzer check-layering check icons install uninstall clean info
 
 all: app
 
@@ -168,6 +168,15 @@ app: $(APP_BIN)
 $(APP_BIN): $(CORE_OBJS) $(ENGINE_OBJS) $(UI_OBJS) $(UI_RAYGUI_OBJ) $(APP_OBJS) $(WIN_RES_OBJ)
 	@mkdir -p $(dir $@)
 	$(CC) $(APP_LDFLAGS) $^ -o $@ $(RAYLIB_LIBS) $(PLATFORM_LIBS) $(MATH_LIB)
+
+GEN_ICON_BIN := $(BIN_DIR)/gen_icon$(EXE_EXT)
+
+$(GEN_ICON_BIN): tools/gen_icon.c
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) $(RAYLIB_CFLAGS) $< $(LDFLAGS) -o $@ $(RAYLIB_LIBS) $(PLATFORM_LIBS) $(MATH_LIB)
+
+icons: $(GEN_ICON_BIN)
+	./$(GEN_ICON_BIN)
 
 $(OBJ_DIR)/assets/rata-workspace.res.o: assets/rata-workspace.rc assets/rata-workspace.ico VERSION
 	@mkdir -p $(dir $@)
