@@ -115,6 +115,14 @@ int main(int argc, char **argv) {
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
     InitWindow(1280, 800, "Rata Workspace — Electrical Engineering Toolkit");
+    if (!IsWindowReady()) {
+        fprintf(stderr, "rata-workspace: failed to initialize OpenGL/GLFW window.\n");
+        free(ratawave);
+        free(shell);
+        rata_arena_destroy(&frame_arena);
+        app_updater_destroy(updater);
+        return 1;
+    }
     SetWindowMinSize(960, 600);
     SetTargetFPS(60);
 

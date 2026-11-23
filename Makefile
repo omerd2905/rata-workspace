@@ -132,7 +132,7 @@ ENGINE_CFLAGS := $(CFLAGS) -isystem vendor/monocypher
 UI_CFLAGS := $(CFLAGS) $(RAYLIB_CFLAGS) -isystem vendor/raygui
 # Third-party vendor implementations compiled without -Werror on unmodified upstream code
 RAYGUI_IMPL_CFLAGS := -std=c11 $(OPT_FLAGS) $(SAN_FLAGS) -Isrc $(RAYLIB_CFLAGS) -isystem vendor/raygui -Wno-unused-parameter -Wno-unused-function -Wno-pedantic
-VENDOR_CRYPTO_CFLAGS := -std=c11 $(OPT_FLAGS) $(SAN_FLAGS) -Ivendor/monocypher
+VENDOR_CRYPTO_CFLAGS := -std=c11 -O2 -Ivendor/monocypher
 
 # Source lists (explicit per layer to preserve strict layering)
 CORE_SRCS := $(wildcard src/core/*.c)

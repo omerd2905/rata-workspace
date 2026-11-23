@@ -42,6 +42,13 @@ int main(int argc, char **argv) {
 
     SetTraceLogLevel(LOG_WARNING);
     InitWindow(1280, 800, "Rata Workspace UI Smoke");
+    if (!IsWindowReady()) {
+        fprintf(stderr, "ui_smoke: FAIL OpenGL/GLFW window failed to initialize\n");
+        free(rw);
+        free(shell);
+        rata_arena_destroy(&arena);
+        return 1;
+    }
     SetTargetFPS(60);
 
     ui_theme_load_font(&shell->theme);
