@@ -3,6 +3,19 @@
 All notable changes to **Rata Workspace** are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.1] - 2026-11-25
+
+### Added
+- **Signed Windows Auto-Updater (`src/app/app_updater.c`, `src/engines/update_manifest.c`)**: background & CLI (`rata-workspace --update`) update checks over HTTPS via WinHTTP, verifying exact byte size, streaming FIPS 180-4 SHA-256 (`src/core/sha256.c`), and Ed25519 signatures (vendored Monocypher 4.0.3) before staging or silently launching the installer; non-blocking `"vX.Y.Z ready — Restart & update"` banner and save-before-restart prompt in the shell.
+- **Release Signing Tool & Manifest Fuzzer**: pure-C11 `rata-sign` CLI (`tools/rata_sign.c`, `make sign-tool`) and `fuzz_update_manifest` fuzz harness.
+- **Icon Generator Target**: committed pure-C11 icon generator (`tools/gen_icon.c`) under `make icons`.
+- **MIT License**: added root `LICENSE` and bundled license metadata across Linux, Nix, and Windows packages.
+
+### Changed
+- **Windows GUI Subsystem & `PATH`**: linked `rata-workspace.exe` with `-mwindows` (no stray console window when launched from Start Menu/Explorer) while preserving piped stdout/stderr and attaching to parent PowerShell/cmd consoles for `--version`, `--help`, and `--update`; per-user Inno Setup installer now registers `{app}` in `HKCU\Environment\Path` and relaunches after silent upgrades.
+- **Nyquist-Boundary Sampling (`src/engines/dsp_sampling.c`)**: explicitly detects $f \equiv 0$ and $f \equiv f_s/2 \pmod{f_s}$, reporting effective amplitude $A\cos(\phi)$ and unrecoverable phase in RataWave instead of `phi -> -phi`.
+- **Nix Flake & `stable` Branch**: locked `flake.lock` against `nixos-26.05`, wrapped runtime `LD_LIBRARY_PATH` (`libGL`, X11 libs, `libngspice`) and `PATH` (`ghdl`), added `/nix/store` update guidance in the About dialog, and configured releases to fast-forward the `stable` branch (`github:omerd2905/rata-workspace/stable`).
+
 ## [0.1.0] - 2026-11-23
 
 ### Added

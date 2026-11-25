@@ -239,7 +239,7 @@ jobs:
           ./build/linux-release/rata-sign verify-manifest dist-artifacts/update-manifest.txt "$SETUP_PATH"
           cat dist-artifacts/update-manifest.txt
 
-          (cd dist-artifacts && sha256sum * > SHA256SUMS)
+          (cd dist-artifacts && sha256sum *.tar.gz *.exe *.zip update-manifest.txt > SHA256SUMS)
           cat dist-artifacts/SHA256SUMS
 
           awk -v ver="$VERSION" '
