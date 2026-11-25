@@ -542,11 +542,19 @@ static void test_update_manifest_and_ed25519(TestContext *t) {
     test_expect_true(t, strcmp(pub_hex, rfc_pub_hex_expected) == 0,
                      "RFC 8032 pubkey matches", __LINE__);
 
-    /* 3. All-zero placeholder public key MUST fail closed. */
+    /* 3. All-zero placeholder public key MUST fail closed; compiled-in pubkey is configured. */
     uint8_t zero_pub[RATA_ED25519_PUBKEY_LEN];
     memset(zero_pub, 0, sizeof(zero_pub));
     test_expect_true(t, !update_pubkey_is_configured(zero_pub), "zero pub unconfigured", __LINE__);
     test_expect_true(t, update_pubkey_is_configured(rfc_pub), "rfc pub configured", __LINE__);
+    uint8_t compiled_pub[RATA_ED25519_PUBKEY_LEN];
+    char compiled_pub_hex[RATA_ED25519_PUBKEY_LEN * 2u + 1u];
+    update_pubkey_get(compiled_pub);
+    update_hex_encode(compiled_pub, sizeof(compiled_pub), compiled_pub_hex);
+    test_expect_true(t, update_pubkey_is_configured(compiled_pub), "compiled pub configured", __LINE__);
+    test_expect_true(t, strcmp(compiled_pub_hex,
+        "40b09fd2689046324ee35daceabd6f2ea98498c6c79e04535b044c18f5d535ab") == 0,
+        "compiled pub hex matches", __LINE__);
 
     /* 4. Sign, format, parse, and verify a real temporary installer file. */
     const char *tmp_path = "rata_test_installer_tmp.bin";
