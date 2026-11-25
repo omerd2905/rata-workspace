@@ -516,8 +516,8 @@ static void draw_conv_tab(RataWaveState *st, Rectangle area, RataWorkspaceCtx *c
         "y[n]",
         true, true, true, false
     };
-    PlotTrace bot_trace = {y_axis, sy.samples, sy.len, "y[n]", t->traces[4], PLOT_STEM, 2.2f};
-    PlotMarker cur_mk = {PLOT_MARKER_VLINE, (double)st->conv_n_shift, 0.0, "current n", t->success};
+    PlotTrace bot_trace = {y_axis, sy.samples, sy.len, "y[n]", t->traces[0], PLOT_STEM, 2.2f};
+    PlotMarker cur_mk = {PLOT_MARKER_VLINE, (double)st->conv_n_shift, 0.0, "current n", t->traces[1]};
     ui_plot_draw((Rectangle){right.x, right.y + 64.0f + top_h + 8.0f, right.width, bot_h},
                  &bot_cfg, &st->view_conv_bot, &bot_trace, 1u, &cur_mk, 1u, t);
 
@@ -531,11 +531,11 @@ void ui_ratawave_draw(void *state_ptr, Rectangle viewport, RataWorkspaceCtx *ctx
     }
 
     static const char *tab_names[RW_TAB_COUNT] = {
-        "1. Signals", "2. Convolution", "3. DFT / FFT",
-        "4. Z-Plane & LTI", "5. Sampling", "6. Filter Design"
+        "Signals", "Convolution", "DFT / FFT",
+        "Z-Plane & LTI", "Sampling", "Filter Design"
     };
     Rectangle tab_bar = {viewport.x, viewport.y, viewport.width, 30.0f};
-    if (ui_segmented_tabs(tab_bar, tab_names, RW_TAB_COUNT, &st->active_tab, ctx->theme)) {
+    if (ui_tab_bar(tab_bar, tab_names, RW_TAB_COUNT, &st->active_tab, ctx->theme)) {
         ctx->focus->active_id = 0;
     }
 

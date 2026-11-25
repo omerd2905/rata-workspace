@@ -105,8 +105,8 @@ void ui_workspace_draw_coming_soon(const RataWorkspaceEntry *entry,
     if (entry == NULL || theme == NULL) {
         return;
     }
-    float card_w = (viewport.width > 680.0f) ? 620.0f : (viewport.width - 40.0f);
-    float card_h = 220.0f;
+    float card_w = (viewport.width > 640.0f) ? 580.0f : (viewport.width - 40.0f);
+    float card_h = 216.0f;
     Rectangle card = {
         viewport.x + (viewport.width - card_w) * 0.5f,
         viewport.y + (viewport.height - card_h) * 0.5f,
@@ -115,20 +115,23 @@ void ui_workspace_draw_coming_soon(const RataWorkspaceEntry *entry,
     };
     ui_draw_panel(card, theme);
 
-    DrawRectangle((int)card.x, (int)card.y, (int)card.width, 4, theme->accent);
+    ui_draw_text(theme, entry->name, card.x + 26.0f, card.y + 22.0f, 26.0f, theme->text_primary);
+    ui_draw_text(theme, entry->subtitle, card.x + 26.0f, card.y + 54.0f, 14.5f, theme->text_secondary);
 
-    char badge[48];
-    snprintf(badge, sizeof(badge), "PHASE %d  |  COMING SOON", entry->phase_num);
-    ui_draw_text(theme, badge, card.x + 24.0f, card.y + 22.0f, 13.0f, theme->warning);
+    char phase_lbl[48];
+    snprintf(phase_lbl, sizeof(phase_lbl), "Planned — Phase %d", entry->phase_num);
+    int pw = ui_measure_text(theme, phase_lbl, 12.5f);
+    ui_draw_text(theme, phase_lbl, card.x + card.width - (float)pw - 26.0f,
+                 card.y + 28.0f, 12.5f, theme->text_muted);
 
-    ui_draw_text(theme, entry->name, card.x + 24.0f, card.y + 44.0f, 28.0f, theme->text_primary);
-    ui_draw_text(theme, entry->subtitle, card.x + 24.0f, card.y + 78.0f, 16.0f, theme->accent);
+    DrawLine((int)card.x + 26, (int)card.y + 82,
+             (int)(card.x + card.width - 26.0f), (int)card.y + 82, theme->border);
 
     /* Wrap summary text neatly across lines. */
     const char *s = entry->planned_summary;
-    float y = card.y + 112.0f;
-    int max_w = (int)card.width - 48;
-    while (*s != '\0' && y < card.y + card.height - 20.0f) {
+    float y = card.y + 98.0f;
+    int max_w = (int)card.width - 52;
+    while (*s != '\0' && y < card.y + card.height - 22.0f) {
         char line[160];
         size_t len = 0u;
         size_t last_sp = 0u;
@@ -150,8 +153,8 @@ void ui_workspace_draw_coming_soon(const RataWorkspaceEntry *entry,
             break;
         }
         line[len] = '\0';
-        ui_draw_text(theme, line, card.x + 24.0f, y, 14.0f, theme->text_secondary);
-        y += 20.0f;
+        ui_draw_text(theme, line, card.x + 26.0f, y, 14.0f, theme->text_secondary);
+        y += 21.0f;
         s += len;
         while (*s == ' ') {
             s++;

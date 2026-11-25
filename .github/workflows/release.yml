@@ -183,6 +183,7 @@ jobs:
           cp "$RUNNER_TEMP/raylib-dl/raylib-5.5_win64_mingw-w64/LICENSE" build/windows-stage/licenses/raylib-LICENSE.txt
           cp vendor/raygui/LICENSE build/windows-stage/licenses/raygui-LICENSE.txt
           cp vendor/jetbrains-mono/OFL.txt build/windows-stage/licenses/jetbrains-mono-OFL.txt
+          cp vendor/lora/OFL.txt build/windows-stage/licenses/lora-OFL.txt
           cp vendor/monocypher/LICENCE.md build/windows-stage/licenses/monocypher-LICENCE.txt
           cp CHANGELOG.md build/windows-stage/CHANGELOG.md
 

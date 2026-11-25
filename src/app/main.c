@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
     }
 
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_MSAA_4X_HINT);
-    InitWindow(1280, 800, "Rata Workspace — Electrical Engineering Toolkit");
+    InitWindow(1280, 800, "Rata Workspace");
     if (!IsWindowReady()) {
         fprintf(stderr, "rata-workspace: failed to initialize OpenGL/GLFW window.\n");
         free(ratawave);
@@ -115,13 +115,44 @@ int main(int argc, char **argv) {
         app_updater_destroy(updater);
         return 1;
     }
-    SetWindowMinSize(960, 600);
+    SetExitKey(KEY_NULL);
+
+    /* Scale initial physical window dimensions on High-DPI displays (e.g. 200% Windows 11)
+     * while keeping FLAG_WINDOW_HIGHDPI off to avoid upstream GLFW resize/mouse-scale bugs. */
+    Vector2 dpi = GetWindowScaleDPI();
+    float dpi_s = (dpi.x >= 1.05f && dpi.x <= 4.0f) ? dpi.x : 1.0f;
+    int mon = GetCurrentMonitor();
+    int mon_w = GetMonitorWidth(mon);
+    int mon_h = GetMonitorHeight(mon);
+    if (dpi_s > 1.05f) {
+        int init_w = (int)(1280.0f * dpi_s);
+        int init_h = (int)(800.0f * dpi_s);
+        if (mon_w > 640 && init_w > (mon_w * 9) / 10) {
+            init_w = (mon_w * 9) / 10;
+        }
+        if (mon_h > 480 && init_h > (mon_h * 9) / 10) {
+            init_h = (mon_h * 9) / 10;
+        }
+        SetWindowSize(init_w, init_h);
+        if (mon_w > init_w && mon_h > init_h) {
+            SetWindowPosition((mon_w - init_w) / 2, (mon_h - init_h) / 2);
+        }
+    }
+    int min_w = (int)(860.0f * dpi_s);
+    int min_h = (int)(540.0f * dpi_s);
+    if (mon_w > 640 && min_w > (mon_w * 4) / 5) {
+        min_w = (mon_w * 4) / 5;
+    }
+    if (mon_h > 480 && min_h > (mon_h * 4) / 5) {
+        min_h = (mon_h * 4) / 5;
+    }
+    SetWindowMinSize(min_w, min_h);
     SetTargetFPS(60);
 
     ui_theme_load_font(&shell->theme);
     ui_theme_apply_raygui(&shell->theme);
 
-    while (!WindowShouldClose() && !shell->request_restart_for_update) {
+    while (!WindowShouldClose() && !shell->request_exit && !shell->request_restart_for_update) {
         double dt = (double)GetFrameTime();
         rata_arena_reset(&frame_arena);
 

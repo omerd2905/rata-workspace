@@ -349,9 +349,9 @@ static void draw_grid_and_axes(const PlotMapper *mp,
                                  (int)p.x, (int)(mp->area.y + mp->area.height), theme->grid_major);
                     }
                     snprintf(lbl, sizeof(lbl), "1e%d", d);
-                    int tw = ui_measure_text(theme, lbl, 11.0f);
+                    int tw = ui_measure_text(theme, lbl, 12.0f);
                     ui_draw_text(theme, lbl, p.x - (float)tw * 0.5f,
-                                 mp->area.y + mp->area.height + 4.0f, 11.0f, theme->text_muted);
+                                 mp->area.y + mp->area.height + 4.0f, 12.0f, theme->text_muted);
                 }
             }
             if (cfg->show_grid && d1 - d0 <= 6) {
@@ -367,7 +367,7 @@ static void draw_grid_and_axes(const PlotMapper *mp,
             }
         }
     } else {
-        double step = nice_step(mp->ux1 - mp->ux0, (int)(mp->area.width / 78.0f));
+        double step = nice_step(mp->ux1 - mp->ux0, (int)(mp->area.width / 80.0f));
         double first = ceil(mp->ux0 / step) * step;
         for (double v = first; v <= mp->ux1 + step * 0.01; v += step) {
             Vector2 p;
@@ -380,9 +380,9 @@ static void draw_grid_and_axes(const PlotMapper *mp,
                              (int)p.x, (int)(mp->area.y + mp->area.height), gc);
                 }
                 format_tick(v, lbl, sizeof(lbl));
-                int tw = ui_measure_text(theme, lbl, 11.0f);
+                int tw = ui_measure_text(theme, lbl, 12.0f);
                 ui_draw_text(theme, lbl, p.x - (float)tw * 0.5f,
-                             mp->area.y + mp->area.height + 4.0f, 11.0f, theme->text_muted);
+                             mp->area.y + mp->area.height + 4.0f, 12.0f, theme->text_muted);
             }
         }
     }
@@ -401,14 +401,14 @@ static void draw_grid_and_axes(const PlotMapper *mp,
                                  (int)(mp->area.x + mp->area.width), (int)p.y, theme->grid_major);
                     }
                     snprintf(lbl, sizeof(lbl), "1e%d", d);
-                    int tw = ui_measure_text(theme, lbl, 11.0f);
+                    int tw = ui_measure_text(theme, lbl, 12.0f);
                     ui_draw_text(theme, lbl, mp->area.x - (float)tw - 6.0f,
-                                 p.y - 5.5f, 11.0f, theme->text_muted);
+                                 p.y - 6.0f, 12.0f, theme->text_muted);
                 }
             }
         }
     } else {
-        double step = nice_step(mp->uy1 - mp->uy0, (int)(mp->area.height / 44.0f));
+        double step = nice_step(mp->uy1 - mp->uy0, (int)(mp->area.height / 46.0f));
         double first = ceil(mp->uy0 / step) * step;
         for (double v = first; v <= mp->uy1 + step * 0.01; v += step) {
             Vector2 p;
@@ -421,9 +421,9 @@ static void draw_grid_and_axes(const PlotMapper *mp,
                              (int)(mp->area.x + mp->area.width), (int)p.y, gc);
                 }
                 format_tick(v, lbl, sizeof(lbl));
-                int tw = ui_measure_text(theme, lbl, 11.0f);
+                int tw = ui_measure_text(theme, lbl, 12.0f);
                 ui_draw_text(theme, lbl, mp->area.x - (float)tw - 6.0f,
-                             p.y - 5.5f, 11.0f, theme->text_muted);
+                             p.y - 6.0f, 12.0f, theme->text_muted);
             }
         }
     }
@@ -543,10 +543,10 @@ void ui_plot_draw(Rectangle bounds,
     DrawRectangleRec(bounds, theme->bg_plot);
     DrawRectangleLinesEx(bounds, 1.0f, theme->border);
 
-    float pad_l = 58.0f;
+    float pad_l = 62.0f;
     float pad_r = 14.0f;
     float pad_t = (cfg->title != NULL && cfg->title[0] != '\0') ? 30.0f : 14.0f;
-    float pad_b = (cfg->x_label != NULL && cfg->x_label[0] != '\0') ? 32.0f : 20.0f;
+    float pad_b = (cfg->x_label != NULL && cfg->x_label[0] != '\0') ? 34.0f : 22.0f;
 
     Rectangle area = {
         bounds.x + pad_l,
@@ -559,13 +559,13 @@ void ui_plot_draw(Rectangle bounds,
     }
 
     if (cfg->title != NULL && cfg->title[0] != '\0') {
-        BeginScissorMode((int)area.x, (int)bounds.y, (int)(area.width - 44.0f), (int)pad_t);
-        ui_draw_text(theme, cfg->title, area.x, bounds.y + 8.0f, 14.0f, theme->text_primary);
+        ui_begin_scissor(theme, area.x, bounds.y, area.width - 46.0f, pad_t);
+        ui_draw_text(theme, cfg->title, area.x, bounds.y + 7.0f, 14.0f, theme->text_primary);
         EndScissorMode();
     }
 
     /* Fit button in top-right header corner. */
-    Rectangle fit_btn = {bounds.x + bounds.width - 42.0f, bounds.y + 4.0f, 34.0f, 18.0f};
+    Rectangle fit_btn = {bounds.x + bounds.width - 44.0f, bounds.y + 5.0f, 36.0f, 20.0f};
     if (ui_button(fit_btn, "Fit", false, theme)) {
         ui_plot_autofit(view, traces, trace_count, markers, marker_count, cfg->show_unit_circle);
     }
@@ -577,7 +577,7 @@ void ui_plot_draw(Rectangle bounds,
 
     draw_grid_and_axes(&mp, cfg, theme);
 
-    BeginScissorMode((int)area.x, (int)area.y, (int)area.width, (int)area.height);
+    ui_begin_scissor(theme, area.x, area.y, area.width, area.height);
 
     /* Optional unit circle for z-plane pole-zero diagrams. */
     if (cfg->show_unit_circle && !mp.log_x && !mp.log_y) {
@@ -588,7 +588,7 @@ void ui_plot_draw(Rectangle bounds,
             Vector2 cur;
             if (map_to_px(&mp, cos(ang), sin(ang), &cur)) {
                 if (i > 0) {
-                    DrawLineEx(prev, cur, 1.4f, theme->border_strong);
+                    DrawLineEx(prev, cur, 1.3f, theme->border_strong);
                 }
                 prev = cur;
             }
@@ -601,7 +601,7 @@ void ui_plot_draw(Rectangle bounds,
     /* Hover crosshair and coordinate readout. */
     Vector2 mouse = GetMousePosition();
     if (CheckCollisionPointRec(mouse, area)) {
-        Color ch = (Color){120, 145, 180, 120};
+        Color ch = (Color){198, 188, 170, 90};
         DrawLine((int)mouse.x, (int)area.y, (int)mouse.x, (int)(area.y + area.height), ch);
         DrawLine((int)area.x, (int)mouse.y, (int)(area.x + area.width), (int)mouse.y, ch);
 
@@ -609,11 +609,11 @@ void ui_plot_draw(Rectangle bounds,
         px_to_data(&mp, mouse, &dx, &dy);
         char coord[64];
         snprintf(coord, sizeof(coord), "(%.4g, %.4g)", dx, dy);
-        int cw = ui_measure_text(theme, coord, 12.0f);
-        Rectangle cbox = {area.x + area.width - (float)cw - 12.0f,
-                          area.y + area.height - 20.0f, (float)cw + 8.0f, 16.0f};
-        DrawRectangleRec(cbox, (Color){15, 20, 29, 210});
-        ui_draw_text(theme, coord, cbox.x + 4.0f, cbox.y + 2.0f, 12.0f, theme->accent);
+        int cw = ui_measure_text(theme, coord, 12.5f);
+        Rectangle cbox = {area.x + area.width - (float)cw - 14.0f,
+                          area.y + area.height - 22.0f, (float)cw + 10.0f, 18.0f};
+        DrawRectangleRec(cbox, (Color){38, 28, 22, 224});
+        ui_draw_text(theme, coord, cbox.x + 5.0f, cbox.y + 2.5f, 12.5f, theme->text_primary);
     }
 
     /* Top-right legend inside plot area. */
@@ -623,32 +623,32 @@ void ui_plot_draw(Rectangle bounds,
             if (traces[i].label == NULL || traces[i].label[0] == '\0') {
                 continue;
             }
-            int lw = ui_measure_text(theme, traces[i].label, 12.0f);
-            float lx = area.x + area.width - (float)lw - 24.0f;
-            DrawRectangle((int)lx - 4, (int)ly - 1, lw + 22, 15, (Color){15, 20, 29, 200});
-            DrawRectangle((int)lx, (int)ly + 4, 10, 6, traces[i].color);
-            ui_draw_text(theme, traces[i].label, lx + 14.0f, ly + 1.0f, 12.0f, theme->text_primary);
-            ly += 17.0f;
+            int lw = ui_measure_text(theme, traces[i].label, 12.5f);
+            float lx = area.x + area.width - (float)lw - 26.0f;
+            DrawRectangle((int)lx - 5, (int)ly - 1, lw + 24, 17, (Color){38, 28, 22, 215});
+            DrawRectangle((int)lx, (int)ly + 6, 10, 3, traces[i].color);
+            ui_draw_text(theme, traces[i].label, lx + 14.0f, ly + 1.5f, 12.5f, theme->text_primary);
+            ly += 19.0f;
         }
     }
 
     EndScissorMode();
 
-    DrawRectangleLinesEx(area, 1.0f, theme->border_strong);
+    DrawRectangleLinesEx(area, 1.0f, theme->border);
 
     if (cfg->x_label != NULL && cfg->x_label[0] != '\0') {
-        int tw = ui_measure_text(theme, cfg->x_label, 12.0f);
+        int tw = ui_measure_text(theme, cfg->x_label, 12.5f);
         ui_draw_text(theme, cfg->x_label, area.x + (area.width - (float)tw) * 0.5f,
-                     bounds.y + bounds.height - 15.0f, 12.0f, theme->text_secondary);
+                     bounds.y + bounds.height - 16.0f, 12.5f, theme->text_secondary);
     }
     if (cfg->y_label != NULL && cfg->y_label[0] != '\0') {
-        int ylw = ui_measure_text(theme, cfg->y_label, 11.0f);
+        int ylw = ui_measure_text(theme, cfg->y_label, 12.0f);
         float ylx = area.x - (float)ylw - 6.0f;
         if (ylx < bounds.x + 4.0f) {
             ylx = bounds.x + 4.0f;
         }
-        BeginScissorMode((int)bounds.x + 2, (int)bounds.y + 2, (int)pad_l - 6, (int)pad_t);
-        ui_draw_text(theme, cfg->y_label, ylx, area.y - 14.0f, 11.0f, theme->accent);
+        ui_begin_scissor(theme, bounds.x + 2.0f, bounds.y + 2.0f, pad_l - 6.0f, pad_t);
+        ui_draw_text(theme, cfg->y_label, ylx, area.y - 15.0f, 12.0f, theme->text_secondary);
         EndScissorMode();
     }
 }

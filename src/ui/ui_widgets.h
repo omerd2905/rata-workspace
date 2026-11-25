@@ -37,6 +37,13 @@ bool ui_segmented_tabs(Rectangle bounds,
                        int *selected,
                        const RataTheme *theme);
 
+/* Minimalist underline tab bar for workspace sub-views. Updates `*selected` and returns true when changed. */
+bool ui_tab_bar(Rectangle bounds,
+                const char *const *labels,
+                int count,
+                int *selected,
+                const RataTheme *theme);
+
 /* Crisp themed button (supports active/toggled highlight). Returns true on click. */
 bool ui_button(Rectangle bounds, const char *label, bool active, const RataTheme *theme);
 

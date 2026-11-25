@@ -25,12 +25,12 @@ static Image render_icon_256(void) {
     const int size = 256;
     Image img = GenImageColor(size, size, (Color){0, 0, 0, 0});
 
-    Color bg = {15, 20, 29, 255};
-    Color cyan = {56, 189, 248, 255};
-    Color grid = {36, 48, 68, 255};
-    Color axis = {78, 102, 138, 255};
-    Color amber = {251, 191, 36, 255};
-    Color emerald = {52, 211, 153, 255};
+    Color bg = {38, 28, 22, 255};        /* Coffee Bean */
+    Color border = {118, 110, 89, 255};  /* Muted Oak Border */
+    Color wave = {232, 221, 203, 255};   /* Pale Oak */
+    Color grid = {56, 53, 42, 255};      /* Dark Khaki Grid */
+    Color axis = {94, 86, 66, 255};      /* Khaki Zero Axis */
+    Color dot = {194, 156, 108, 255};    /* Warm Ochre */
 
     float rad = 44.0f;
     for (int y = 0; y < size; ++y) {
@@ -42,7 +42,7 @@ static Image render_icon_256(void) {
             float inside = (dx > dy) ? dx : dy;
             float dist = sqrtf(ox * ox + oy * oy) + ((dx > 0.0f || dy > 0.0f) ? 0.0f : inside);
             if (dist <= rad) {
-                Color c = (dist >= rad - 8.0f) ? cyan : bg;
+                Color c = (dist >= rad - 6.0f) ? border : bg;
                 ImageDrawPixel(&img, x, y, c);
             }
         }
@@ -64,7 +64,7 @@ static Image render_icon_256(void) {
         for (int ox = -5; ox <= 5; ++ox) {
             for (int oy = -5; oy <= 5; ++oy) {
                 if (ox * ox + oy * oy <= 25) {
-                    ImageDrawLine(&img, prev_x + ox, prev_y + oy, px + ox, py + oy, cyan);
+                    ImageDrawLine(&img, prev_x + ox, prev_y + oy, px + ox, py + oy, wave);
                 }
             }
         }
@@ -78,7 +78,7 @@ static Image render_icon_256(void) {
         int px = 34 + (int)round(u * 188.0);
         double val = exp(-1.15 * u) * sin(2.0 * 3.14159265358979323846 * 2.0 * u);
         int py = 128 - (int)round(val * 74.0);
-        ImageDrawCircle(&img, px, py, 10, (i < 2) ? amber : emerald);
+        ImageDrawCircle(&img, px, py, 9, dot);
     }
 
     return img;

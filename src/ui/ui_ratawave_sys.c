@@ -232,7 +232,8 @@ void ui_ratawave_draw_lti_tab(RataWaveState *st, Rectangle area, RataWorkspaceCt
             st->view_lti_mag.log_x = st->lti_log_x;
             st->view_lti_phase.log_x = st->lti_log_x;
             PlotConfig mcfg = {
-                st->lti_db ? "Frequency Response |H(e^{jw})| (dB)" : "Magnitude |H(e^{jw})|",
+                st->lti_db ? "Frequency Response |H(e^j\xcf\x89)| (dB)"
+                           : "Magnitude |H(e^j\xcf\x89)|",
                 "Frequency (Hz)",
                 st->lti_db ? "dB" : "|H|",
                 true, true, true, false

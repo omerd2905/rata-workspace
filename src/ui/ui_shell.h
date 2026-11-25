@@ -33,7 +33,15 @@ typedef struct RataUpdateUiStatus {
 typedef void (*RataUpdatePollFn)(void *user_data, RataUpdateUiStatus *out);
 typedef void (*RataUpdateTriggerFn)(void *user_data);
 
-/* Top-level shell state (sidebar switcher, project file bar, About/Updates dialog,
+typedef enum RataShellMenuId {
+    RATA_MENU_NONE = 0,
+    RATA_MENU_FILE = 1,
+    RATA_MENU_VIEW = 2,
+    RATA_MENU_WORKSPACE = 3,
+    RATA_MENU_HELP = 4
+} RataShellMenuId;
+
+/* Top-level shell state (top menu bar, view scaling, sidebar switcher, modals,
  * non-blocking update banner, toast banner). Owned by caller (no hidden global state). */
 typedef struct RataShell {
     RataTheme theme;
@@ -45,7 +53,15 @@ typedef struct RataShell {
     char toast_msg[200];
     RataBannerLevel toast_level;
     double toast_timer;
+
+    /* Viewing scale & chrome state */
+    float ui_scale;          /* User zoom multiplier (1.0 = 100%, range 0.65..2.50) */
+    bool dpi_auto;           /* Multiply ui_scale by OS monitor content scale */
+    bool show_sidebar;       /* Show/hide left workspace sidebar */
+    RataShellMenuId open_menu;
     bool show_about;
+    bool show_path_modal;
+    bool request_exit;
 
     /* Auto-update UI state & callbacks (decoupled from src/app/ to preserve layering). */
     bool auto_update;
@@ -60,6 +76,9 @@ typedef struct RataShell {
 } RataShell;
 
 void ui_shell_init(RataShell *shell);
+
+/* Sets user viewing scale (clamped to [0.65, 2.50]). */
+void ui_shell_set_scale(RataShell *shell, float scale);
 
 /* Connects app-layer updater polling/trigger callbacks without violating UI->App layering. */
 void ui_shell_set_updater(RataShell *shell,

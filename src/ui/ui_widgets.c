@@ -38,7 +38,7 @@ bool ui_text_field(Rectangle bounds,
         }
     }
 
-    BeginScissorMode((int)box.x, (int)box.y, (int)box.width, (int)box.height);
+    ui_begin_scissor(theme, box.x, box.y, box.width, box.height);
     int res = GuiTextBox(box, buf, buf_size, editing);
     EndScissorMode();
     if (res != 0) {
@@ -108,6 +108,59 @@ bool ui_segmented_tabs(Rectangle bounds,
     return changed;
 }
 
+bool ui_tab_bar(Rectangle bounds,
+                const char *const *labels,
+                int count,
+                int *selected,
+                const RataTheme *theme) {
+    if (labels == NULL || count <= 0 || selected == NULL || theme == NULL) {
+        return false;
+    }
+    bool changed = false;
+    DrawLine((int)bounds.x, (int)(bounds.y + bounds.height - 1.0f),
+             (int)(bounds.x + bounds.width), (int)(bounds.y + bounds.height - 1.0f),
+             theme->border);
+
+    Vector2 mp = GetMousePosition();
+    float cx = bounds.x;
+    float fsz = 14.0f;
+    for (int i = 0; i < count; ++i) {
+        const char *lbl = (labels[i] != NULL) ? labels[i] : "";
+        int tw = ui_measure_text(theme, lbl, fsz);
+        float tab_w = (float)tw + 28.0f;
+        if (cx + tab_w > bounds.x + bounds.width) {
+            tab_w = (bounds.x + bounds.width) - cx;
+        }
+        if (tab_w < 24.0f) {
+            break;
+        }
+        Rectangle tr = {cx, bounds.y, tab_w, bounds.height};
+        bool active = (*selected == i);
+        bool hovered = CheckCollisionPointRec(mp, tr);
+        if (hovered && !active) {
+            DrawRectangle((int)tr.x, (int)tr.y, (int)tr.width, (int)tr.height - 1,
+                          (Color){70, 66, 52, 110});
+        }
+        Color tc = active ? theme->text_primary : (hovered ? theme->text_secondary : theme->text_muted);
+        float tx = tr.x + (tr.width - (float)tw) * 0.5f;
+        float ty = tr.y + (tr.height - fsz) * 0.5f - 1.0f;
+        ui_begin_scissor(theme, tr.x + 2.0f, tr.y, tr.width - 4.0f, tr.height);
+        ui_draw_text(theme, lbl, tx, ty, fsz, tc);
+        EndScissorMode();
+
+        if (active) {
+            DrawRectangle((int)tr.x + 6, (int)(tr.y + tr.height - 2.0f),
+                          (int)tr.width - 12, 2, theme->accent);
+        }
+        if (hovered && IsMouseButtonPressed(MOUSE_BUTTON_LEFT) && *selected != i) {
+            *selected = i;
+            changed = true;
+        }
+        cx += tab_w + 2.0f;
+    }
+    return changed;
+}
+
 bool ui_button(Rectangle bounds, const char *label, bool active, const RataTheme *theme) {
     if (theme == NULL || label == NULL) {
         return false;
@@ -118,23 +171,23 @@ bool ui_button(Rectangle bounds, const char *label, bool active, const RataTheme
 
     Color bg = active ? theme->bg_button_active : theme->bg_button;
     if (hovered && !active) {
-        bg = (Color){44, 58, 82, 255};
+        bg = theme->bg_button_hover;
     }
-    Color border = active ? theme->accent : (hovered ? theme->border_strong : theme->border);
+    Color border = active ? theme->border_strong : (hovered ? theme->border_strong : theme->border);
     Color text_col = active ? theme->text_primary : theme->text_secondary;
     if (hovered) {
         text_col = theme->text_primary;
     }
 
     DrawRectangleRec(bounds, bg);
-    DrawRectangleLinesEx(bounds, active ? 1.5f : 1.0f, border);
+    DrawRectangleLinesEx(bounds, 1.0f, border);
 
-    float fsz = 13.0f;
+    float fsz = 13.5f;
     int tw = ui_measure_text(theme, label, fsz);
     float tx = bounds.x + (bounds.width - (float)tw) * 0.5f;
     float ty = bounds.y + (bounds.height - fsz) * 0.5f;
-    BeginScissorMode((int)bounds.x + 2, (int)bounds.y + 1,
-                     (int)bounds.width - 4, (int)bounds.height - 2);
+    ui_begin_scissor(theme, bounds.x + 2.0f, bounds.y + 1.0f,
+                     bounds.width - 4.0f, bounds.height - 2.0f);
     ui_draw_text(theme, label, tx, ty, fsz, text_col);
     EndScissorMode();
     return clicked;

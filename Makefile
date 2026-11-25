@@ -307,6 +307,7 @@ install: app
 	install -m 644 LICENSE "$(PREFIX)/share/licenses/rata-workspace/LICENSE"
 	install -m 644 vendor/raygui/LICENSE "$(PREFIX)/share/licenses/rata-workspace/raygui-LICENSE.txt"
 	install -m 644 vendor/jetbrains-mono/OFL.txt "$(PREFIX)/share/licenses/rata-workspace/jetbrains-mono-OFL.txt"
+	install -m 644 vendor/lora/OFL.txt "$(PREFIX)/share/licenses/rata-workspace/lora-OFL.txt"
 	install -m 644 vendor/monocypher/LICENCE.md "$(PREFIX)/share/licenses/rata-workspace/monocypher-LICENCE.txt"
 
 uninstall:

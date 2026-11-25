@@ -91,8 +91,10 @@ src/app/       Application entry point (main.c) and top-level lifecycle.
 - Only approved C dependencies:
   - **raylib** (via Nix / system pkg-config / `RAYLIB_DIR`; pinned SHA-256 checksums in CI/release)
   - **raygui** (vendored unmodified in `vendor/raygui/`)
-  - **JetBrains Mono NL** (SIL OFL 1.1 monospace font with Greek coverage, embedded as read-only C
-    byte array in `src/ui/ui_font_data.c`, license in `vendor/jetbrains-mono/OFL.txt`)
+  - **Lora** (Cyreal, SIL OFL 1.1 general UI font, embedded as read-only C byte array in
+    `src/ui/ui_font_lora.c`, license in `vendor/lora/OFL.txt`)
+  - **JetBrains Mono NL** (SIL OFL 1.1 monospace & math/Greek fallback font, embedded as read-only
+    C byte array in `src/ui/ui_font_data.c`, license in `vendor/jetbrains-mono/OFL.txt`)
   - **Monocypher 4.0.3** (BSD-2-Clause / CC0, vendored unmodified in `vendor/monocypher/`, used for
     Ed25519 release-update signature verification)
   - **libngspice** (C API, for Phase 6 / RataSim)

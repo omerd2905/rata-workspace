@@ -443,7 +443,7 @@ void ui_formula_draw(Rectangle bounds,
     if (markup == NULL || scratch == NULL) {
         return;
     }
-    BeginScissorMode((int)bounds.x, (int)bounds.y, (int)bounds.width, (int)bounds.height);
+    ui_begin_scissor(theme, bounds.x, bounds.y, bounds.width, bounds.height);
 
     size_t mark = rata_arena_mark(scratch);
     FormulaTree tree;

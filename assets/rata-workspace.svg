@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <rect x="8" y="8" width="240" height="240" rx="44" fill="#0F141D" stroke="#38BDF8" stroke-width="8"/>
-  <g stroke="#243044" stroke-width="3">
+  <rect x="8" y="8" width="240" height="240" rx="44" fill="#261C16" stroke="#766E59" stroke-width="6"/>
+  <g stroke="#38352A" stroke-width="3">
     <line x1="36" y1="76" x2="220" y2="76"/>
-    <line x1="36" y1="128" x2="220" y2="128" stroke="#4E668A"/>
+    <line x1="36" y1="128" x2="220" y2="128" stroke="#5E5642"/>
     <line x1="36" y1="180" x2="220" y2="180"/>
     <line x1="76" y1="40" x2="76" y2="216"/>
     <line x1="128" y1="40" x2="128" y2="216"/>
@@ -10,10 +10,10 @@
   </g>
   <!-- Damped sinusoid waveform -->
   <path d="M 36 128 C 52 52, 68 52, 84 128 C 100 192, 116 192, 132 128 C 148 80, 164 80, 180 128 C 196 164, 210 156, 220 128"
-        fill="none" stroke="#38BDF8" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+        fill="none" stroke="#E8DDCB" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
   <!-- Discrete sample markers -->
-  <circle cx="60" cy="70" r="8" fill="#FBBF24"/>
-  <circle cx="108" cy="176" r="8" fill="#FBBF24"/>
-  <circle cx="156" cy="92" r="8" fill="#34D399"/>
-  <circle cx="204" cy="150" r="8" fill="#34D399"/>
+  <circle cx="60" cy="70" r="8" fill="#C29C6C"/>
+  <circle cx="108" cy="176" r="8" fill="#C29C6C"/>
+  <circle cx="156" cy="92" r="8" fill="#C29C6C"/>
+  <circle cx="204" cy="150" r="8" fill="#C29C6C"/>
 </svg>

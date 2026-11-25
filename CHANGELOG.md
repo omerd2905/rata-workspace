@@ -3,6 +3,16 @@
 All notable changes to **Rata Workspace** are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.2] - 2026-11-25
+
+### Added
+- **Top Menu Bar (`File`, `View`, `Workspace`, `Help`)**: full-width Coffee Bean (`#261C16`) desktop menu bar with dropdown menus, keyboard shortcuts (`Ctrl+=` / `Ctrl+-` / `Ctrl+0` zoom, `Ctrl+B` sidebar toggle, `Ctrl+O` / `Ctrl+S` project open/save, `Alt+1..6` workspace switch), clickable top-right `View N%` scale indicator, and a dedicated `Project File Path...` dialog.
+- **High-DPI & User-Controlled Viewing Scale**: automatic OS monitor content-scale detection (`GetWindowScaleDPI`) combined with user-selectable viewing scales (`75%`–`200%` presets and `±10%` steps under `View`), DPI-aware initial window sizing on High-DPI Windows 11 displays, `Camera2D` logical viewport scaling, and `ui_begin_scissor` physical-framebuffer clipping, persisted across sessions in `settings.rata`.
+- **Embedded Lora Typography (`src/ui/ui_font_lora.c`, `vendor/lora/OFL.txt`)**: embedded SIL OFL 1.1 **Lora Regular** as the general UI font with trilinear GPU mipmapping and seamless glyph fallback to JetBrains Mono NL for Greek and mathematical symbols.
+
+### Changed
+- **Minimalist Warm Studio Theme (`src/ui/ui_theme.c`, `src/ui/ui_shell.c`, `src/ui/ui_widgets.c`)**: replaced high-saturation neon palette and boxy chrome with **Pale Oak** (`#E8DDCB`) text, **Coffee Bean** (`#261C16`) top bar, **Dark Khaki** (`#3F3C2E`) surfaces, low-saturation plot traces, underline workspace tabs (`ui_tab_bar`), subdued faders, and an uncluttered collapsible sidebar.
+
 ## [0.1.1] - 2026-11-25
 
 ### Added
