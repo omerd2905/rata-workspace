@@ -3,6 +3,15 @@
 All notable changes to **Rata Workspace** are documented in this file.
 This project adheres to [Semantic Versioning](https://semver.org/).
 
+## [0.1.3] - 2026-11-25
+
+### Added
+- **Bidirectional `x[n]` / `h[n]` / `y[n]` Convolution & Deconvolution (`src/engines/dsp_conv.c`, `src/ui/ui_ratawave_conv.c`)**: enter any two of `x[n]`, `h[n]`, and `y[n]` to solve for the third (`Solve y[n]`, `Solve h[n]`, `Solve x[n]`), or enter all three to verify `y[n] == (x * h)[n]` (`Verify`). Supports exact finite-support FIR deconvolution with automatic `n0` shift tracking, causal ascending-power IIR long division, and safe divergence clamping.
+- **Direct Sample-List Signal Input (`src/engines/dsp_signal.c`)**: `dsp_signal_from_text` accepts comma/semicolon-separated sample vectors (e.g. `1, 2, 1` or `[1, -0.5, 0.25]`) alongside symbolic expressions across Signals, Convolution, FFT, and LTI tabs, plus one-click `Copy Solved -> Input`.
+
+### Changed
+- **Column-Snapped Sample Probing (`src/ui/ui_plot.c`)**: hovering anywhere above or below a signal's amplitude snaps directly onto the exact sample at that horizontal column (and snaps to nearby poles/zeros on Z-plane plots), highlighting the sample dot and displaying `n = k  x[n] = val` instead of raw empty-space cursor coordinates.
+
 ## [0.1.2] - 2026-11-25
 
 ### Added

@@ -1,6 +1,7 @@
 #ifndef RATA_ENGINES_DSP_SIGNAL_H
 #define RATA_ENGINES_DSP_SIGNAL_H
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -51,6 +52,20 @@ RataStatus dsp_signal_from_expr(const char *expr_str,
                                 size_t len,
                                 double fs,
                                 RataSignal *out,
+                                RataExprError *err_out,
+                                RataArena *arena);
+
+/* Builds a signal from either a comma/semicolon-separated sample list (e.g. "1, 2, 1",
+ * "[1, -0.5, 0.25]", "{1, 2, 3}") OR a mathematical expression in `n`, `t`, `fs`.
+ * When parsed as a sample list, `out->len` equals the number of listed samples (`expr_len`
+ * is ignored) and `*was_list_out` (if non-NULL) is set to true.
+ * Allocates `out->samples` in `arena` (owned by `arena`). */
+RataStatus dsp_signal_from_text(const char *input_str,
+                                int32_t n0,
+                                size_t expr_len,
+                                double fs,
+                                RataSignal *out,
+                                bool *was_list_out,
                                 RataExprError *err_out,
                                 RataArena *arena);
 

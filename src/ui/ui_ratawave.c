@@ -4,8 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "engines/dsp_conv.h"
 #include "ui/ui_formula.h"
+#include "ui/ui_ratawave_conv.h"
 #include "ui/ui_ratawave_freq.h"
 #include "ui/ui_ratawave_sys.h"
 #include "ui/ui_widgets.h"
@@ -33,13 +33,19 @@ void ui_ratawave_init(void *state_ptr) {
     st->prim_shift = 0;
     st->prim_width = 8;
 
-    /* Convolution defaults: rectangular pulse * decaying exponential */
+    /* Convolution & Deconvolution defaults: consistent {x[n], h[n], y[n]} triad */
+    st->conv_solve_mode = CONV_SOLVE_Y;
     snprintf(st->conv_expr_x, sizeof(st->conv_expr_x), "u(n) - u(n - 5)");
     snprintf(st->conv_expr_h, sizeof(st->conv_expr_h), "0.75^n * u(n)");
+    snprintf(st->conv_expr_y, sizeof(st->conv_expr_y),
+             "1, 1.75, 2.3125, 2.734375, 3.05078125, 2.28808594, 1.71606445, "
+             "1.28704834, 0.86517334, 0.54876709, 0.311462402, 0.133483887");
     st->conv_x_n0 = -2;
     st->conv_x_len = 10;
     st->conv_h_n0 = 0;
     st->conv_h_len = 8;
+    st->conv_y_n0 = 0;
+    st->conv_y_len = 12;
     st->conv_n_shift = 2;
     st->conv_playing = false;
     st->conv_speed = 2.0;
@@ -94,7 +100,7 @@ RataStatus ui_ratawave_build_signal(const RataWaveState *st,
     double fs = (st->fs_hz > 1.0) ? st->fs_hz : 1.0;
 
     if (st->sig_mode == SIG_SRC_EXPR) {
-        return dsp_signal_from_expr(st->expr_x, st->n0, len, fs, out, err_out, arena);
+        return dsp_signal_from_text(st->expr_x, st->n0, len, fs, out, NULL, err_out, arena);
     }
 
     switch (st->prim_kind) {
@@ -146,7 +152,7 @@ static void draw_signal_tab(RataWaveState *st, Rectangle area, RataWorkspaceCtx 
     y += 34.0f;
 
     if (st->sig_mode == SIG_SRC_EXPR) {
-        if (ui_text_field((Rectangle){x, y, w, 42.0f}, "x[n] expression (vars: n, t, fs):",
+        if (ui_text_field((Rectangle){x, y, w, 42.0f}, "x[n] (expression or sample list a, b, c):",
                           st->expr_x, (int)sizeof(st->expr_x), 101, ctx->focus, t)) {
             ui_plot_view_reset(&st->view_sig);
         }
@@ -335,195 +341,6 @@ static void draw_signal_tab(RataWaveState *st, Rectangle area, RataWorkspaceCtx 
     rata_arena_restore(ctx->frame_arena, mark);
 }
 
-static void draw_conv_tab(RataWaveState *st, Rectangle area, RataWorkspaceCtx *ctx) {
-    const RataTheme *t = ctx->theme;
-    float ctrl_w = 290.0f;
-    Rectangle left = {area.x, area.y, ctrl_w, area.height};
-    Rectangle right = {area.x + ctrl_w + 8.0f, area.y, area.width - ctrl_w - 8.0f, area.height};
-
-    ui_draw_panel(left, t);
-    ui_draw_section_title((Rectangle){left.x, left.y, left.width, 28.0f},
-                          "Convolution Flip & Shift", t);
-
-    float x = left.x + 10.0f;
-    float w = left.width - 20.0f;
-    float y = left.y + 36.0f;
-
-    if (ui_text_field((Rectangle){x, y, w, 40.0f}, "Input x[n]:",
-                      st->conv_expr_x, (int)sizeof(st->conv_expr_x), 201, ctx->focus, t)) {
-        ui_plot_view_reset(&st->view_conv_top);
-        ui_plot_view_reset(&st->view_conv_bot);
-    }
-    y += 46.0f;
-    if (ui_text_field((Rectangle){x, y, w, 40.0f}, "Impulse response h[n]:",
-                      st->conv_expr_h, (int)sizeof(st->conv_expr_h), 202, ctx->focus, t)) {
-        ui_plot_view_reset(&st->view_conv_top);
-        ui_plot_view_reset(&st->view_conv_bot);
-    }
-    y += 48.0f;
-
-    float bw = (w - 4.0f) * 0.5f;
-    if (ui_button((Rectangle){x, y, bw, 24.0f}, "Pulse * Pulse", false, t)) {
-        snprintf(st->conv_expr_x, sizeof(st->conv_expr_x), "u(n) - u(n - 5)");
-        snprintf(st->conv_expr_h, sizeof(st->conv_expr_h), "u(n) - u(n - 5)");
-        st->conv_x_n0 = 0; st->conv_x_len = 6;
-        st->conv_h_n0 = 0; st->conv_h_len = 6;
-        st->conv_n_shift = 0;
-        ui_plot_view_reset(&st->view_conv_top);
-        ui_plot_view_reset(&st->view_conv_bot);
-    }
-    if (ui_button((Rectangle){x + bw + 4.0f, y, bw, 24.0f}, "Pulse * Exp", false, t)) {
-        snprintf(st->conv_expr_x, sizeof(st->conv_expr_x), "u(n) - u(n - 5)");
-        snprintf(st->conv_expr_h, sizeof(st->conv_expr_h), "0.75^n * u(n)");
-        st->conv_x_n0 = -2; st->conv_x_len = 10;
-        st->conv_h_n0 = 0; st->conv_h_len = 8;
-        st->conv_n_shift = 0;
-        ui_plot_view_reset(&st->view_conv_top);
-        ui_plot_view_reset(&st->view_conv_bot);
-    }
-    y += 32.0f;
-
-    double lx = (double)st->conv_x_len;
-    if (ui_slider_row((Rectangle){x, y, w, 34.0f}, "x[n] Length", "samples", &lx, 2.0, 24.0, t)) {
-        st->conv_x_len = (int32_t)round(lx);
-        ui_plot_view_reset(&st->view_conv_top);
-        ui_plot_view_reset(&st->view_conv_bot);
-    }
-    y += 38.0f;
-
-    double lh = (double)st->conv_h_len;
-    if (ui_slider_row((Rectangle){x, y, w, 34.0f}, "h[n] Length", "samples", &lh, 2.0, 24.0, t)) {
-        st->conv_h_len = (int32_t)round(lh);
-        ui_plot_view_reset(&st->view_conv_top);
-        ui_plot_view_reset(&st->view_conv_bot);
-    }
-    y += 42.0f;
-
-    /* Compute x[n], h[n], and full convolution y[n]. */
-    size_t mark = rata_arena_mark(ctx->frame_arena);
-    RataSignal sx, sh, sy;
-    RataExprError err_x, err_h;
-    RataStatus stx = dsp_signal_from_expr(st->conv_expr_x, st->conv_x_n0,
-                                          (size_t)st->conv_x_len, st->fs_hz,
-                                          &sx, &err_x, ctx->frame_arena);
-    RataStatus sth = dsp_signal_from_expr(st->conv_expr_h, st->conv_h_n0,
-                                          (size_t)st->conv_h_len, st->fs_hz,
-                                          &sh, &err_h, ctx->frame_arena);
-
-    if (stx != RATA_OK || sth != RATA_OK) {
-        char msg[192];
-        snprintf(msg, sizeof(msg), "Convolution parse error: %s",
-                 (stx != RATA_OK) ? err_x.message : err_h.message);
-        ui_draw_banner((Rectangle){right.x, right.y, right.width, 34.0f}, msg, BANNER_ERROR, t);
-        rata_arena_restore(ctx->frame_arena, mark);
-        return;
-    }
-
-    if (dsp_conv_linear(&sx, &sh, &sy, ctx->frame_arena) != RATA_OK) {
-        rata_arena_restore(ctx->frame_arena, mark);
-        return;
-    }
-
-    int32_t y_min_n = sy.n0;
-    int32_t y_max_n = sy.n0 + (int32_t)sy.len - 1;
-    if (st->conv_n_shift < y_min_n) { st->conv_n_shift = y_min_n; }
-    if (st->conv_n_shift > y_max_n) { st->conv_n_shift = y_max_n; }
-
-    /* Playback animation controls */
-    ui_draw_text(t, "Flip-and-Shift Playback:", x, y, 13.0f, t->accent);
-    y += 18.0f;
-    float pbw = (w - 8.0f) / 3.0f;
-    if (ui_button((Rectangle){x, y, pbw, 26.0f},
-                  st->conv_playing ? "Pause" : "Play", st->conv_playing, t)) {
-        st->conv_playing = !st->conv_playing;
-    }
-    if (ui_button((Rectangle){x + pbw + 4.0f, y, pbw, 26.0f}, "< Step", false, t)) {
-        st->conv_playing = false;
-        if (st->conv_n_shift > y_min_n) { st->conv_n_shift--; }
-    }
-    if (ui_button((Rectangle){x + 2.0f * (pbw + 4.0f), y, pbw, 26.0f}, "Step >", false, t)) {
-        st->conv_playing = false;
-        if (st->conv_n_shift < y_max_n) { st->conv_n_shift++; }
-    }
-    y += 34.0f;
-
-    if (st->conv_playing) {
-        st->conv_accum_dt += ctx->dt * st->conv_speed;
-        if (st->conv_accum_dt >= 1.0) {
-            st->conv_accum_dt = 0.0;
-            st->conv_n_shift++;
-            if (st->conv_n_shift > y_max_n) {
-                st->conv_n_shift = y_min_n;
-            }
-        }
-    }
-
-    double ns_d = (double)st->conv_n_shift;
-    if (ui_slider_row((Rectangle){x, y, w, 34.0f}, "Current Shift n", "samples",
-                      &ns_d, (double)y_min_n, (double)y_max_n, t)) {
-        st->conv_n_shift = (int32_t)round(ns_d);
-        st->conv_playing = false;
-    }
-    y += 38.0f;
-
-    (void)ui_slider_row((Rectangle){x, y, w, 34.0f}, "Playback Speed", "steps/s",
-                        &st->conv_speed, 0.5, 8.0, t);
-    y += 44.0f;
-
-    RataConvStep step;
-    if (dsp_conv_step(&sx, &sh, st->conv_n_shift, &step, ctx->frame_arena) != RATA_OK) {
-        rata_arena_restore(ctx->frame_arena, mark);
-        return;
-    }
-
-    char cur_val[96];
-    snprintf(cur_val, sizeof(cur_val), "y[%d] = %.6g", st->conv_n_shift, step.sum);
-    ui_draw_text(t, "Current Output Sample:", x, y, 12.0f, t->text_muted);
-    ui_draw_text(t, cur_val, x, y + 17.0f, 19.0f, t->success);
-
-    /* Right side: formula card + top flip/shift plot + bottom output y[n] plot */
-    char fstr[128];
-    snprintf(fstr, sizeof(fstr), "y[n] = \\sum_{k=-\\infty}^{\\infty} x[k] h[n - k]   (y[%d] = %.4g)",
-             st->conv_n_shift, step.sum);
-    ui_formula_card((Rectangle){right.x, right.y, right.width, 56.0f},
-                    "Discrete Linear Convolution", fstr, 15.0f, t, ctx->frame_arena);
-
-    float avail_h = right.height - 64.0f;
-    float top_h = avail_h * 0.52f;
-    float bot_h = avail_h - top_h - 8.0f;
-
-    PlotConfig top_cfg = {
-        "Step View: Stationary x[k], Flipped & Shifted h[n - k], Product x[k]*h[n - k]",
-        "Summation Index k (samples)",
-        "Amp",
-        true, true, true, false
-    };
-    PlotTrace top_traces[3] = {
-        {step.k_axis, step.x_aligned, step.k_len, "x[k]", t->traces[0], PLOT_STEM, 2.0f},
-        {step.k_axis, step.h_shifted, step.k_len, "h[n - k]", t->traces[1], PLOT_STEM, 2.0f},
-        {step.k_axis, step.product, step.k_len, "x[k]*h[n-k]", t->traces[2], PLOT_STEM, 2.6f}
-    };
-    ui_plot_draw((Rectangle){right.x, right.y + 64.0f, right.width, top_h},
-                 &top_cfg, &st->view_conv_top, top_traces, 3u, NULL, 0u, t);
-
-    double *y_axis = (double *)rata_arena_alloc(ctx->frame_arena, sy.len * sizeof(double), 8u);
-    for (size_t i = 0u; i < sy.len; ++i) {
-        y_axis[i] = (double)(sy.n0 + (int32_t)i);
-    }
-    PlotConfig bot_cfg = {
-        "Convolution Output y[n] = (x * h)[n]",
-        "Output Index n (samples)",
-        "y[n]",
-        true, true, true, false
-    };
-    PlotTrace bot_trace = {y_axis, sy.samples, sy.len, "y[n]", t->traces[0], PLOT_STEM, 2.2f};
-    PlotMarker cur_mk = {PLOT_MARKER_VLINE, (double)st->conv_n_shift, 0.0, "current n", t->traces[1]};
-    ui_plot_draw((Rectangle){right.x, right.y + 64.0f + top_h + 8.0f, right.width, bot_h},
-                 &bot_cfg, &st->view_conv_bot, &bot_trace, 1u, &cur_mk, 1u, t);
-
-    rata_arena_restore(ctx->frame_arena, mark);
-}
-
 void ui_ratawave_draw(void *state_ptr, Rectangle viewport, RataWorkspaceCtx *ctx) {
     RataWaveState *st = (RataWaveState *)state_ptr;
     if (st == NULL || ctx == NULL) {
@@ -542,7 +359,7 @@ void ui_ratawave_draw(void *state_ptr, Rectangle viewport, RataWorkspaceCtx *ctx
     Rectangle content = {viewport.x, viewport.y + 38.0f, viewport.width, viewport.height - 38.0f};
     switch (st->active_tab) {
         case RW_TAB_SIGNAL:   draw_signal_tab(st, content, ctx); break;
-        case RW_TAB_CONV:     draw_conv_tab(st, content, ctx); break;
+        case RW_TAB_CONV:     ui_ratawave_draw_conv_tab(st, content, ctx); break;
         case RW_TAB_FFT:      ui_ratawave_draw_fft_tab(st, content, ctx); break;
         case RW_TAB_LTI:      ui_ratawave_draw_lti_tab(st, content, ctx); break;
         case RW_TAB_SAMPLING: ui_ratawave_draw_sampling_tab(st, content, ctx); break;
@@ -566,8 +383,23 @@ RataStatus ui_ratawave_save(const void *state_ptr, RataProjectDoc *doc) {
     project_doc_set(doc, "ratawave", "n0", num);
     snprintf(num, sizeof(num), "%d", (int)st->n_len);
     project_doc_set(doc, "ratawave", "n_len", num);
+    snprintf(num, sizeof(num), "%d", st->conv_solve_mode);
+    project_doc_set(doc, "ratawave", "conv_solve_mode", num);
     project_doc_set(doc, "ratawave", "conv_expr_x", st->conv_expr_x);
     project_doc_set(doc, "ratawave", "conv_expr_h", st->conv_expr_h);
+    project_doc_set(doc, "ratawave", "conv_expr_y", st->conv_expr_y);
+    snprintf(num, sizeof(num), "%d", (int)st->conv_x_n0);
+    project_doc_set(doc, "ratawave", "conv_x_n0", num);
+    snprintf(num, sizeof(num), "%d", (int)st->conv_x_len);
+    project_doc_set(doc, "ratawave", "conv_x_len", num);
+    snprintf(num, sizeof(num), "%d", (int)st->conv_h_n0);
+    project_doc_set(doc, "ratawave", "conv_h_n0", num);
+    snprintf(num, sizeof(num), "%d", (int)st->conv_h_len);
+    project_doc_set(doc, "ratawave", "conv_h_len", num);
+    snprintf(num, sizeof(num), "%d", (int)st->conv_y_n0);
+    project_doc_set(doc, "ratawave", "conv_y_n0", num);
+    snprintf(num, sizeof(num), "%d", (int)st->conv_y_len);
+    project_doc_set(doc, "ratawave", "conv_y_len", num);
     project_doc_set(doc, "ratawave", "lti_b", st->lti_b_str);
     project_doc_set(doc, "ratawave", "lti_a", st->lti_a_str);
     snprintf(num, sizeof(num), "%.10g", st->samp_f0_hz);
@@ -595,10 +427,33 @@ RataStatus ui_ratawave_load(void *state_ptr, const RataProjectDoc *doc) {
     if (project_doc_get_i32(doc, "ratawave", "n_len", &iv) && iv >= 4 && iv <= 2048) {
         st->n_len = iv;
     }
+    if (project_doc_get_i32(doc, "ratawave", "conv_solve_mode", &iv) && iv >= 0 && iv <= 3) {
+        st->conv_solve_mode = iv;
+    }
     s = project_doc_get(doc, "ratawave", "conv_expr_x");
     if (s != NULL) { snprintf(st->conv_expr_x, sizeof(st->conv_expr_x), "%s", s); }
     s = project_doc_get(doc, "ratawave", "conv_expr_h");
     if (s != NULL) { snprintf(st->conv_expr_h, sizeof(st->conv_expr_h), "%s", s); }
+    s = project_doc_get(doc, "ratawave", "conv_expr_y");
+    if (s != NULL) { snprintf(st->conv_expr_y, sizeof(st->conv_expr_y), "%s", s); }
+    if (project_doc_get_i32(doc, "ratawave", "conv_x_n0", &iv) && iv >= -1024 && iv <= 1024) {
+        st->conv_x_n0 = iv;
+    }
+    if (project_doc_get_i32(doc, "ratawave", "conv_x_len", &iv) && iv >= 2 && iv <= 2048) {
+        st->conv_x_len = iv;
+    }
+    if (project_doc_get_i32(doc, "ratawave", "conv_h_n0", &iv) && iv >= -1024 && iv <= 1024) {
+        st->conv_h_n0 = iv;
+    }
+    if (project_doc_get_i32(doc, "ratawave", "conv_h_len", &iv) && iv >= 2 && iv <= 2048) {
+        st->conv_h_len = iv;
+    }
+    if (project_doc_get_i32(doc, "ratawave", "conv_y_n0", &iv) && iv >= -1024 && iv <= 1024) {
+        st->conv_y_n0 = iv;
+    }
+    if (project_doc_get_i32(doc, "ratawave", "conv_y_len", &iv) && iv >= 2 && iv <= 2048) {
+        st->conv_y_len = iv;
+    }
     s = project_doc_get(doc, "ratawave", "lti_b");
     if (s != NULL) { snprintf(st->lti_b_str, sizeof(st->lti_b_str), "%s", s); }
     s = project_doc_get(doc, "ratawave", "lti_a");

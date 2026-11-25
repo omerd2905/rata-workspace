@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "core/arena.h"
+#include "engines/dsp_signal.h"
 #include "engines/expr.h"
 
 int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size);
@@ -36,6 +37,15 @@ int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
         vars[0].value = -5.0;
         (void)expr_eval(&expr, vars, 3u, &out);
     }
+
+    /* Also fuzz NUL-terminated sample-list / expression signal builder. */
+    char cbuf[4097];
+    memcpy(cbuf, data, size);
+    cbuf[size] = '\0';
+    rata_arena_reset(&arena);
+    RataSignal sig;
+    bool was_list = false;
+    (void)dsp_signal_from_text(cbuf, -2, 16u, 1000.0, &sig, &was_list, &err, &arena);
     return 0;
 }
 

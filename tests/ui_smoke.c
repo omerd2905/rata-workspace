@@ -101,6 +101,27 @@ int main(int argc, char **argv) {
         }
     }
 
+    /* Exercise Convolution bidirectional solve modes: Solve h[n], Solve x[n], and Verify all 3. */
+    rw->active_tab = RW_TAB_CONV;
+    for (int sm = CONV_SOLVE_H; sm <= CONV_VERIFY_ALL; ++sm) {
+        rw->conv_solve_mode = sm;
+        ui_plot_view_reset(&rw->view_conv_top);
+        ui_plot_view_reset(&rw->view_conv_bot);
+        for (int f = 0; f < 2; ++f) {
+            rata_arena_reset(&arena);
+            BeginDrawing();
+            ui_shell_update_and_draw(shell, &arena, 1.0 / 60.0);
+            EndDrawing();
+        }
+        if (shot_dir != NULL) {
+            snprintf(shot_path, sizeof(shot_path), "%s/conv_mode_%d.png", shot_dir, sm);
+            Image img = LoadImageFromScreen();
+            ExportImage(img, shot_path);
+            UnloadImage(img);
+        }
+    }
+    rw->conv_solve_mode = CONV_SOLVE_Y;
+
     /* Exercise top-bar View menu dropdown and 135% UI zoom scaling. */
     rw->active_tab = RW_TAB_SIGNAL;
     shell->open_menu = RATA_MENU_VIEW;

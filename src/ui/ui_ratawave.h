@@ -38,6 +38,13 @@ typedef enum RataPrimKind {
     PRIM_PIECEWISE = 5
 } RataPrimKind;
 
+typedef enum RataConvSolveMode {
+    CONV_SOLVE_Y = 0,     /* Given x[n], h[n] -> Solve y[n] = (x * h)[n] */
+    CONV_SOLVE_H = 1,     /* Given x[n], y[n] -> Solve h[n] via deconvolution */
+    CONV_SOLVE_X = 2,     /* Given h[n], y[n] -> Solve x[n] via deconvolution */
+    CONV_VERIFY_ALL = 3   /* Given x[n], h[n], y[n] -> Compare y[n] vs (x * h)[n] */
+} RataConvSolveMode;
+
 /* Full RataWave workspace state (owned by app; zero hidden globals). */
 typedef struct RataWaveState {
     int active_tab;
@@ -45,7 +52,7 @@ typedef struct RataWaveState {
     /* Shared signal configuration (Tab 1: Signals & Tab 3: FFT & Tab 4: Filter input). */
     int sig_mode;
     int prim_kind;
-    char expr_x[192];
+    char expr_x[256];
     double fs_hz;
     int32_t n0;
     int32_t n_len;
@@ -57,13 +64,17 @@ typedef struct RataWaveState {
     int32_t prim_width;
     PlotView view_sig;
 
-    /* Tab 2: Convolution (flip-and-shift animation). */
-    char conv_expr_x[160];
-    char conv_expr_h[160];
+    /* Tab 2: Convolution & Deconvolution (solve any of y[n], h[n], x[n], or verify all 3). */
+    int conv_solve_mode;
+    char conv_expr_x[256];
+    char conv_expr_h[256];
+    char conv_expr_y[256];
     int32_t conv_x_n0;
     int32_t conv_x_len;
     int32_t conv_h_n0;
     int32_t conv_h_len;
+    int32_t conv_y_n0;
+    int32_t conv_y_len;
     int32_t conv_n_shift;
     bool conv_playing;
     double conv_speed;

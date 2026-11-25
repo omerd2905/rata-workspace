@@ -525,6 +525,177 @@ static void draw_markers(const PlotMapper *mp,
     }
 }
 
+static void draw_hover_probe(const PlotMapper *mp,
+                             const PlotConfig *cfg,
+                             Vector2 mouse,
+                             const PlotTrace *traces,
+                             size_t trace_count,
+                             const PlotMarker *markers,
+                             size_t marker_count,
+                             const RataTheme *theme) {
+    Color guide_col = (Color){198, 188, 170, 88};
+    char coord[96];
+    coord[0] = '\0';
+
+    if (trace_count > 0u && traces != NULL) {
+        bool all_discrete = true;
+        for (size_t t = 0u; t < trace_count; ++t) {
+            if (traces[t].style != PLOT_STEM && traces[t].style != PLOT_SCATTER) {
+                all_discrete = false;
+                break;
+            }
+        }
+
+        bool found = false;
+        float best_score = 1.0e30f;
+        size_t best_t = 0u;
+        double best_x = 0.0;
+        double best_y = 0.0;
+        Vector2 best_px = {0.0f, 0.0f};
+
+        for (size_t t = 0u; t < trace_count; ++t) {
+            const PlotTrace *tr = &traces[t];
+            if (tr->xs == NULL || tr->ys == NULL || tr->count == 0u) {
+                continue;
+            }
+            bool tr_found = false;
+            float min_dx = 1.0e30f;
+            float min_dy = 1.0e30f;
+            double cand_x = 0.0;
+            double cand_y = 0.0;
+            Vector2 cand_px = {0.0f, 0.0f};
+
+            for (size_t i = 0u; i < tr->count; ++i) {
+                Vector2 pt;
+                if (!map_to_px(mp, tr->xs[i], tr->ys[i], &pt)) {
+                    continue;
+                }
+                if (pt.x < mp->area.x - 8.0f || pt.x > mp->area.x + mp->area.width + 8.0f) {
+                    continue;
+                }
+                float dx = fabsf(pt.x - mouse.x);
+                float dy = fabsf(pt.y - mouse.y);
+                if (!tr_found || dx < min_dx - 0.25f ||
+                    (fabsf(dx - min_dx) <= 0.25f && dy < min_dy)) {
+                    tr_found = true;
+                    min_dx = dx;
+                    min_dy = dy;
+                    cand_x = tr->xs[i];
+                    cand_y = tr->ys[i];
+                    cand_px = pt;
+                }
+            }
+
+            if (!tr_found) {
+                continue;
+            }
+            bool discrete = (tr->style == PLOT_STEM || tr->style == PLOT_SCATTER);
+            if (trace_count > 1u && !all_discrete && discrete && min_dx > 12.0f) {
+                continue;
+            }
+            float bonus = (discrete && min_dx <= 9.0f) ? -14.0f : 0.0f;
+            if (trace_count > 1u && fabs(cand_y) > 1.0e-12 && min_dy > 8.0f) {
+                /* Prefer active non-zero stems over zero-padded baseline dots when hovering a column. */
+                bonus -= 24.0f;
+            }
+            float score = 2.5f * min_dx + 0.35f * min_dy + bonus;
+            if (!found || score < best_score) {
+                found = true;
+                best_score = score;
+                best_t = t;
+                best_x = cand_x;
+                best_y = cand_y;
+                best_px = cand_px;
+            }
+        }
+
+        if (found) {
+            const PlotTrace *wtr = &traces[best_t];
+            DrawLine((int)(best_px.x + 0.5f), (int)mp->area.y,
+                     (int)(best_px.x + 0.5f), (int)(mp->area.y + mp->area.height), guide_col);
+            if (best_px.y >= mp->area.y && best_px.y <= mp->area.y + mp->area.height) {
+                DrawLine((int)mp->area.x, (int)(best_px.y + 0.5f),
+                         (int)(mp->area.x + mp->area.width), (int)(best_px.y + 0.5f), guide_col);
+                DrawCircleV(best_px, 4.5f, wtr->color);
+                DrawCircleLines((int)(best_px.x + 0.5f), (int)(best_px.y + 0.5f),
+                                6.5f, theme->text_primary);
+            }
+
+            const char *lbl = (wtr->label != NULL && wtr->label[0] != '\0') ? wtr->label : NULL;
+            bool int_index = (wtr->style == PLOT_STEM || wtr->style == PLOT_SCATTER) &&
+                             (fabs(best_x - round(best_x)) < 1.0e-6) &&
+                             (fabs(best_x) < 1.0e8);
+            if (int_index) {
+                int n_idx = (int)round(best_x);
+                if (lbl != NULL) {
+                    snprintf(coord, sizeof(coord), "n = %d   %s = %.5g", n_idx, lbl, best_y);
+                } else {
+                    snprintf(coord, sizeof(coord), "n = %d   val = %.5g", n_idx, best_y);
+                }
+            } else if (lbl != NULL) {
+                snprintf(coord, sizeof(coord), "%s: (%.5g, %.5g)", lbl, best_x, best_y);
+            } else {
+                snprintf(coord, sizeof(coord), "(%.5g, %.5g)", best_x, best_y);
+            }
+        }
+    } else {
+        /* Marker-only / Z-plane plot: snap to nearest pole or zero within 32 px. */
+        bool snapped_mk = false;
+        float best_d = 32.0f;
+        const PlotMarker *win_mk = NULL;
+        Vector2 win_px = {0.0f, 0.0f};
+        for (size_t i = 0u; i < marker_count && markers != NULL; ++i) {
+            if (markers[i].kind != PLOT_MARKER_POLE && markers[i].kind != PLOT_MARKER_ZERO) {
+                continue;
+            }
+            Vector2 p;
+            if (map_to_px(mp, markers[i].x, markers[i].y, &p)) {
+                float d = hypotf(p.x - mouse.x, p.y - mouse.y);
+                if (d <= best_d) {
+                    best_d = d;
+                    snapped_mk = true;
+                    win_mk = &markers[i];
+                    win_px = p;
+                }
+            }
+        }
+        if (snapped_mk && win_mk != NULL) {
+            DrawLine((int)(win_px.x + 0.5f), (int)mp->area.y,
+                     (int)(win_px.x + 0.5f), (int)(mp->area.y + mp->area.height), guide_col);
+            DrawLine((int)mp->area.x, (int)(win_px.y + 0.5f),
+                     (int)(mp->area.x + mp->area.width), (int)(win_px.y + 0.5f), guide_col);
+            DrawCircleLines((int)(win_px.x + 0.5f), (int)(win_px.y + 0.5f),
+                            9.0f, theme->text_primary);
+            double mag = hypot(win_mk->x, win_mk->y);
+            snprintf(coord, sizeof(coord), "%s: %.4g %+.4gj  (|z| = %.4g)",
+                     (win_mk->kind == PLOT_MARKER_POLE) ? "Pole" : "Zero",
+                     win_mk->x, win_mk->y, mag);
+        } else {
+            DrawLine((int)mouse.x, (int)mp->area.y,
+                     (int)mouse.x, (int)(mp->area.y + mp->area.height), guide_col);
+            DrawLine((int)mp->area.x, (int)mouse.y,
+                     (int)(mp->area.x + mp->area.width), (int)mouse.y, guide_col);
+            double dx = 0.0, dy = 0.0;
+            px_to_data(mp, mouse, &dx, &dy);
+            if (cfg->show_unit_circle) {
+                snprintf(coord, sizeof(coord), "z = %.4g %+.4gj  (|z| = %.4g)",
+                         dx, dy, hypot(dx, dy));
+            } else {
+                snprintf(coord, sizeof(coord), "(%.4g, %.4g)", dx, dy);
+            }
+        }
+    }
+
+    if (coord[0] != '\0') {
+        int cw = ui_measure_text(theme, coord, 12.5f);
+        Rectangle cbox = {mp->area.x + mp->area.width - (float)cw - 14.0f,
+                          mp->area.y + mp->area.height - 22.0f, (float)cw + 10.0f, 18.0f};
+        DrawRectangleRec(cbox, (Color){38, 28, 22, 232});
+        DrawRectangleLinesEx(cbox, 1.0f, theme->border);
+        ui_draw_text(theme, coord, cbox.x + 5.0f, cbox.y + 2.5f, 12.5f, theme->text_primary);
+    }
+}
+
 void ui_plot_draw(Rectangle bounds,
                   const PlotConfig *cfg,
                   PlotView *view,
@@ -598,22 +769,10 @@ void ui_plot_draw(Rectangle bounds,
     draw_traces(&mp, traces, trace_count);
     draw_markers(&mp, markers, marker_count, theme);
 
-    /* Hover crosshair and coordinate readout. */
+    /* Sample-snapped hover probe (catches exact sample amplitude anywhere in vertical column). */
     Vector2 mouse = GetMousePosition();
     if (CheckCollisionPointRec(mouse, area)) {
-        Color ch = (Color){198, 188, 170, 90};
-        DrawLine((int)mouse.x, (int)area.y, (int)mouse.x, (int)(area.y + area.height), ch);
-        DrawLine((int)area.x, (int)mouse.y, (int)(area.x + area.width), (int)mouse.y, ch);
-
-        double dx = 0.0, dy = 0.0;
-        px_to_data(&mp, mouse, &dx, &dy);
-        char coord[64];
-        snprintf(coord, sizeof(coord), "(%.4g, %.4g)", dx, dy);
-        int cw = ui_measure_text(theme, coord, 12.5f);
-        Rectangle cbox = {area.x + area.width - (float)cw - 14.0f,
-                          area.y + area.height - 22.0f, (float)cw + 10.0f, 18.0f};
-        DrawRectangleRec(cbox, (Color){38, 28, 22, 224});
-        ui_draw_text(theme, coord, cbox.x + 5.0f, cbox.y + 2.5f, 12.5f, theme->text_primary);
+        draw_hover_probe(&mp, cfg, mouse, traces, trace_count, markers, marker_count, theme);
     }
 
     /* Top-right legend inside plot area. */

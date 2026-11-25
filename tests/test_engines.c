@@ -221,6 +221,69 @@ static void test_convolution_textbook_and_steps(TestContext *t) {
     for (size_t i = 0u; i < y2.len; ++i) {
         test_expect_near(t, y_ifft[i].re, y2.samples[i], 1.0e-11, "conv theorem", __LINE__);
     }
+
+    /* Sample-list vs expression parsing via dsp_signal_from_text */
+    RataSignal s_list, s_expr;
+    bool was_list = false;
+    test_expect_true(t, dsp_signal_from_text("[1, -1/2, cos(0)]", -1, 16u, 1000.0,
+                                             &s_list, &was_list, &err, &a) == RATA_OK,
+                     "sample list ok", __LINE__);
+    test_expect_true(t, was_list && s_list.len == 3u && s_list.n0 == -1, "list meta", __LINE__);
+    test_expect_near(t, s_list.samples[0], 1.0, 1.0e-12, "list[0]", __LINE__);
+    test_expect_near(t, s_list.samples[1], -0.5, 1.0e-12, "list[1]", __LINE__);
+    test_expect_near(t, s_list.samples[2], 1.0, 1.0e-12, "list[2]", __LINE__);
+
+    test_expect_true(t, dsp_signal_from_text("if(n >= 0, n + 1, 0)", 0, 4u, 1000.0,
+                                             &s_expr, &was_list, &err, &a) == RATA_OK,
+                     "if() commas stay expr", __LINE__);
+    test_expect_true(t, !was_list && s_expr.len == 4u, "expr meta", __LINE__);
+    test_expect_near(t, s_expr.samples[2], 3.0, 1.0e-12, "expr[2]=3", __LINE__);
+    test_expect_true(t, dsp_signal_from_text("1, , 2", 0, 4u, 1000.0,
+                                             &s_list, &was_list, &err, &a) == RATA_ERR_PARSE,
+                     "malformed list rejected", __LINE__);
+
+    /* Exact finite deconvolution: recover h[n] from (y, x) and x[n] from (y, h)
+     * including non-zero n0 shifts and leading/trailing zeros!
+     * Note x2 has n0=-3, first non-zero at n=-2 (len 4: {1,1,1,1});
+     * h2 has n0=-1, first non-zero at n=0 (len 5: {1, 0.5, 0.25, 0.125, 0.0625}). */
+    RataSignal h_rec, x_rec;
+    RataDeconvInfo dinfo;
+    test_expect_true(t, dsp_deconv_linear(&y2, &x2, 16u, &h_rec, &dinfo, &a) == RATA_OK,
+                     "deconv h_rec ok", __LINE__);
+    test_expect_true(t, dinfo.exact_finite && !dinfo.truncated_iir, "h_rec exact_finite", __LINE__);
+    test_expect_true(t, h_rec.n0 == 0 && h_rec.len == 5u, "h_rec n0=0 len=5", __LINE__);
+    for (size_t i = 0u; i < 5u; ++i) {
+        test_expect_near(t, h_rec.samples[i], pow(0.5, (double)i), 1.0e-11, "h_rec[i]", __LINE__);
+    }
+
+    test_expect_true(t, dsp_deconv_linear(&y2, &h2, 16u, &x_rec, &dinfo, &a) == RATA_OK,
+                     "deconv x_rec ok", __LINE__);
+    test_expect_true(t, dinfo.exact_finite && x_rec.n0 == -2 && x_rec.len == 4u,
+                     "x_rec n0=-2 len=4", __LINE__);
+    for (size_t i = 0u; i < 4u; ++i) {
+        test_expect_near(t, x_rec.samples[i], 1.0, 1.0e-11, "x_rec[i]=1", __LINE__);
+    }
+
+    /* Causal IIR deconvolution: (1 - 0.75 z^-1) * h = delta => h[m] = 0.75^m */
+    RataSignal k_iir, d_imp, h_iir;
+    dsp_signal_from_text("1, -0.75", 0, 2u, 1000.0, &k_iir, NULL, &err, &a);
+    dsp_signal_from_text("1", 0, 1u, 1000.0, &d_imp, NULL, &err, &a);
+    test_expect_true(t, dsp_deconv_linear(&d_imp, &k_iir, 10u, &h_iir, &dinfo, &a) == RATA_OK,
+                     "iir deconv ok", __LINE__);
+    test_expect_true(t, dinfo.truncated_iir && h_iir.len == 10u, "iir truncated flag", __LINE__);
+    for (size_t m = 0u; m < 10u; ++m) {
+        test_expect_near(t, h_iir.samples[m], pow(0.75, (double)m), 1.0e-12, "0.75^m", __LINE__);
+    }
+
+    /* Division by zero and unstable inverse filter edge cases */
+    RataSignal z_sig, un_known, un_out;
+    dsp_signal_from_text("0, 0, 0", 0, 3u, 1000.0, &z_sig, NULL, &err, &a);
+    test_expect_true(t, dsp_deconv_linear(&y2, &z_sig, 8u, &h_rec, &dinfo, &a) == RATA_ERR_DIV_ZERO,
+                     "deconv by zero caught", __LINE__);
+    dsp_signal_from_text("1, -2.0", 0, 2u, 1000.0, &un_known, NULL, &err, &a);
+    test_expect_true(t, dsp_deconv_linear(&d_imp, &un_known, 64u, &un_out, &dinfo, &a) == RATA_ERR_UNSTABLE,
+                     "unstable inverse caught", __LINE__);
+    test_expect_true(t, dinfo.diverged_at > 0u && dinfo.diverged_at < 64u, "diverged_at valid", __LINE__);
 }
 
 static void test_lti_pole_zero_freqz_and_stability(TestContext *t) {
