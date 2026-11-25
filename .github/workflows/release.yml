@@ -259,10 +259,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          gh release create "$TAG" \
-            dist-artifacts/* \
-            --title "Rata Workspace $TAG" \
-            --notes-file release_notes.md
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist-artifacts/* --clobber
+          else
+            gh release create "$TAG" \
+              dist-artifacts/* \
+              --title "Rata Workspace $TAG" \
+              --notes-file release_notes.md
+          fi
 
-          git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
-          git push origin "refs/tags/${TAG}:refs/heads/stable"
+          git push origin "HEAD:refs/heads/stable"
