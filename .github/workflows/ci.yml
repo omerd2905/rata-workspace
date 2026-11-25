@@ -68,6 +68,7 @@ jobs:
           test -x "$RUNNER_TEMP/stage/bin/rata-workspace"
           test -f "$RUNNER_TEMP/stage/share/applications/rata-workspace.desktop"
           test -f "$RUNNER_TEMP/stage/share/icons/hicolor/256x256/apps/rata-workspace.png"
+          test -f "$RUNNER_TEMP/stage/share/licenses/rata-workspace/LICENSE"
           test -f "$RUNNER_TEMP/stage/share/licenses/rata-workspace/monocypher-LICENCE.txt"
           make uninstall PREFIX="$RUNNER_TEMP/stage"
 

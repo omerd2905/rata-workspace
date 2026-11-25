@@ -122,7 +122,7 @@ endif
 # Static C runtime / winpthread on Windows so rata-workspace.exe is a single self-contained GUI binary
 ifeq ($(TARGET),windows)
   APP_LDFLAGS   := $(LDFLAGS) -mwindows -static -static-libgcc
-  PLATFORM_LIBS := -Wl,-Bstatic -lpthread -Wl,-Bdynamic -lopengl32 -lgdi32 -lwinmm -lwinhttp -ladvapi32
+  PLATFORM_LIBS := -Wl,-Bstatic -lpthread -Wl,-Bdynamic -lopengl32 -lgdi32 -lwinmm -lwinhttp
 else
   APP_LDFLAGS   := $(LDFLAGS)
   PLATFORM_LIBS := -lGL -lpthread -ldl -lrt -lX11
@@ -304,6 +304,7 @@ install: app
 	install -m 644 assets/rata-workspace.desktop "$(PREFIX)/share/applications/rata-workspace.desktop"
 	install -m 644 assets/rata-workspace.png "$(PREFIX)/share/icons/hicolor/256x256/apps/rata-workspace.png"
 	install -m 644 assets/rata-workspace.svg "$(PREFIX)/share/icons/hicolor/scalable/apps/rata-workspace.svg"
+	install -m 644 LICENSE "$(PREFIX)/share/licenses/rata-workspace/LICENSE"
 	install -m 644 vendor/raygui/LICENSE "$(PREFIX)/share/licenses/rata-workspace/raygui-LICENSE.txt"
 	install -m 644 vendor/jetbrains-mono/OFL.txt "$(PREFIX)/share/licenses/rata-workspace/jetbrains-mono-OFL.txt"
 	install -m 644 vendor/monocypher/LICENCE.md "$(PREFIX)/share/licenses/rata-workspace/monocypher-LICENCE.txt"

@@ -225,7 +225,7 @@ static void draw_about_modal(RataShell *shell, RataArena *frame_arena, float sw,
     ui_draw_text(t, "Per-user config & data directory:", x, y + 106.0f, 12.0f, t->text_muted);
     ui_draw_text(t, shell->config_dir, x, y + 123.0f, 12.0f, t->text_primary);
 
-    ui_draw_text(t, "Third-party components:", x, y + 148.0f, 12.0f, t->text_muted);
+    ui_draw_text(t, "License: MIT  |  Third-party components:", x, y + 148.0f, 12.0f, t->text_muted);
     ui_draw_text(t, "raylib (zlib) | raygui 4.0 (zlib) | JetBrains Mono NL (OFL) | Monocypher (BSD/CC0)",
                  x, y + 165.0f, 11.5f, t->text_secondary);
 
@@ -267,17 +267,15 @@ static void draw_about_modal(RataShell *shell, RataArena *frame_arena, float sw,
             Color mc = t->text_secondary;
             if (us->state == RATA_UPD_READY || us->state == RATA_UPD_UP_TO_DATE) {
                 mc = t->success;
-            } else if (us->state == RATA_UPD_AUTH_ERROR) {
-                mc = t->warning;
             } else if (us->state == RATA_UPD_ERROR) {
                 mc = t->danger;
             }
             ui_draw_text(t, us->message, x, uy, 11.5f, mc);
         } else {
-            ui_draw_text(t, "Signed updates checked from stable branch via Windows Credential Manager.",
+            ui_draw_text(t, "Ed25519-signed updates checked over HTTPS from GitHub Releases.",
                          x, uy, 11.5f, t->text_muted);
         }
-        ui_draw_text(t, "CLI: rata-workspace --set-token  |  rata-workspace --update",
+        ui_draw_text(t, "CLI: rata-workspace --update",
                      x, uy + 20.0f, 11.5f, t->text_muted);
     } else if (us->is_nix_store) {
         ui_draw_text(t, "Installed from /nix/store (self-update is disabled on Nix builds).",
@@ -348,12 +346,9 @@ void ui_shell_update_and_draw(RataShell *shell, RataArena *frame_arena, double d
     if (shell->updater_poll_fn != NULL) {
         shell->updater_poll_fn(shell->updater_ctx, &shell->update_status);
         if (shell->update_status.state != shell->last_seen_upd_state) {
-            if (shell->update_status.state == RATA_UPD_AUTH_ERROR &&
+            if (shell->update_status.from_manual &&
+                shell->update_status.state == RATA_UPD_UP_TO_DATE &&
                 shell->update_status.message[0] != '\0') {
-                set_toast(shell, shell->update_status.message, BANNER_WARN);
-            } else if (shell->update_status.from_manual &&
-                       shell->update_status.state == RATA_UPD_UP_TO_DATE &&
-                       shell->update_status.message[0] != '\0') {
                 set_toast(shell, shell->update_status.message, BANNER_OK);
             } else if (shell->update_status.from_manual &&
                        shell->update_status.state == RATA_UPD_ERROR &&

@@ -26,8 +26,6 @@ const char *rata_status_str(RataStatus status) {
             return "unsupported or malformed file format";
         case RATA_ERR_NEWER_VERSION:
             return "file format version is newer than this version of Rata Workspace supports";
-        case RATA_ERR_AUTH:
-            return "authentication failed or token lacks access";
         case RATA_ERR_VERIFY:
             return "cryptographic signature or integrity verification failed";
         default:

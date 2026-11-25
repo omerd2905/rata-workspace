@@ -7,7 +7,7 @@
 #include "core/status.h"
 
 /* Opaque caller-owned updater controller (zero hidden global state).
- * Windows: WinHTTP + Credential Manager + Ed25519 signature verification + background thread.
+ * Windows: WinHTTP (HTTPS) + Ed25519 signature & SHA-256 verification + background thread.
  * Linux/Nix: no self-updater; detects /nix/store installation for the About dialog. */
 typedef struct AppUpdater AppUpdater;
 
@@ -16,8 +16,7 @@ typedef enum AppUpdateState {
     APP_UPD_CHECKING = 1,
     APP_UPD_UP_TO_DATE = 2,
     APP_UPD_READY = 3,
-    APP_UPD_AUTH_ERROR = 4,
-    APP_UPD_ERROR = 5
+    APP_UPD_ERROR = 4
 } AppUpdateState;
 
 typedef struct AppUpdateSnapshot {
@@ -56,11 +55,6 @@ void app_updater_start_background_check(AppUpdater *u, bool manual_request);
 
 /* Thread-safe snapshot of current updater state for UI polling. */
 void app_updater_get_snapshot(AppUpdater *u, AppUpdateSnapshot *out);
-
-/* Synchronous CLI command: `rata-workspace --set-token`.
- * Reads GitHub PAT from a hidden console prompt (NEVER from argv) and stores it
- * in Windows Credential Manager. Returns process exit code (0 on success). */
-int app_updater_cli_set_token(AppUpdater *u, int argc, char **argv);
 
 /* Synchronous CLI command: `rata-workspace --update`.
  * Runs check -> download -> verify -> install with progress text and clear errors.

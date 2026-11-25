@@ -44,21 +44,13 @@ int main(int argc, char **argv) {
             app_console_attach_for_cli(false);
             printf("Rata Workspace %s — Electrical Engineering Toolkit\n"
                    "Usage:\n"
-                   "  rata-workspace              Launch GUI application\n"
-                   "  rata-workspace --version    Print application version\n"
-                   "  rata-workspace --help       Print this help message\n"
-                   "  rata-workspace --update     Check, verify, and install update (Windows)\n"
-                   "  rata-workspace --set-token  Store GitHub read-only PAT (Windows)\n",
+                   "  rata-workspace            Launch GUI application\n"
+                   "  rata-workspace --version  Print application version\n"
+                   "  rata-workspace --help     Print this help message\n"
+                   "  rata-workspace --update   Check, verify, and install update (Windows)\n",
                    RATA_VERSION);
             fflush(stdout);
             return 0;
-        }
-        if (strcmp(argv[i], "--set-token") == 0) {
-            app_console_attach_for_cli(true);
-            AppUpdater *u = app_updater_create(argv0);
-            int rc = app_updater_cli_set_token(u, argc, argv);
-            app_updater_destroy(u);
-            return rc;
         }
         if (strcmp(argv[i], "--update") == 0) {
             app_console_attach_for_cli(false);

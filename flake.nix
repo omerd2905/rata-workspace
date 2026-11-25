@@ -68,6 +68,7 @@
             meta = with pkgs.lib; {
               description = "Native C11 multi-workspace toolkit for electrical-engineering students";
               homepage = "https://github.com/omerd2905/rata-workspace";
+              license = licenses.mit;
               platforms = platforms.linux;
               mainProgram = "rata-workspace";
             };

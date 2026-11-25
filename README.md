@@ -1,6 +1,6 @@
 # Rata Workspace
 
-Native desktop multi-workspace application in pure ISO **C11** for electrical-engineering students.
+Native desktop multi-workspace application in pure ISO **C11** for electrical-engineering students — double-precision in-house solvers, zero scripting runtimes, and strict plain-C-ABI modularity.
 
 ---
 
@@ -10,7 +10,7 @@ Native desktop multi-workspace application in pure ISO **C11** for electrical-en
 
 Install (tracks the `stable` release branch):
 ```sh
-nix profile install "git+ssh://git@github.com/omerd2905/rata-workspace?ref=stable"
+nix profile install github:omerd2905/rata-workspace/stable
 ```
 
 Update:
@@ -20,30 +20,25 @@ nix profile upgrade rata-workspace
 
 Run without installing:
 ```sh
-nix run "git+ssh://git@github.com/omerd2905/rata-workspace?ref=stable"
+nix run github:omerd2905/rata-workspace/stable
 ```
 
-> **Bleeding edge (`main`)**: to test unreleased commits on `main`, omit `?ref=stable`:
-> `nix run git+ssh://git@github.com/omerd2905/rata-workspace`
+> **Bleeding edge (`main`)**: to run unreleased commits on `main`, omit `/stable`:
+> `nix run github:omerd2905/rata-workspace`
 
 ### Windows 11
 
 Install (per-user, no administrator rights required):
 1. Download `rata-workspace-vX.Y.Z-windows-x86_64-setup.exe` from [GitHub Releases](https://github.com/omerd2905/rata-workspace/releases) (verify with `SHA256SUMS`).
-2. Run the installer (installs to `%LOCALAPPDATA%\Programs\RataWorkspace`, adds it to your per-user `PATH`, creates Start Menu entry and optional Desktop shortcut).
+2. Run the installer (installs to `%LOCALAPPDATA%\Programs\RataWorkspace`, adds it to your per-user `PATH`, creates a Start Menu entry and optional Desktop shortcut).
 
-Automatic & CLI updates (private repo):
-1. Create a fine-grained GitHub Personal Access Token scoped **only** to `omerd2905/rata-workspace` with **Contents: Read-only** permission.
-2. In any new PowerShell window, store the token securely in Windows Credential Manager (hidden prompt — never passed on the command line or stored in plaintext files):
-   ```powershell
-   rata-workspace --set-token
-   ```
-3. Rata Workspace checks for signed releases in the background on startup (`About & Updates` -> `Update automatically`, enabled by default), downloads & verifies Ed25519 signature + SHA-256 + exact size, and offers **Restart & update** (or applies silently on the next launch).
-4. To update immediately from the terminal:
-   ```powershell
-   rata-workspace --update
-   ```
-5. Manual update: download and run the newer `setup.exe` — it upgrades in place without touching your settings or projects in `%APPDATA%\RataWorkspace`.
+Updates (zero configuration required):
+- **Automatic**: Rata Workspace checks GitHub Releases over HTTPS in the background (`About & Updates` -> `Update automatically`, enabled by default), verifies the Ed25519 signature + SHA-256 + exact byte size, and offers **Restart & update** (or applies silently on the next launch).
+- **CLI**: from any PowerShell window, run:
+  ```powershell
+  rata-workspace --update
+  ```
+- **Manual**: download and run the newer `setup.exe` — it upgrades in place without touching your settings or projects in `%APPDATA%\RataWorkspace`.
 
 Portable (no installer): download `rata-workspace-vX.Y.Z-windows-x86_64-portable.zip`, unzip, and run `rata-workspace.exe`.
 
@@ -80,24 +75,9 @@ make uninstall PREFIX="$HOME/.local"
 
 ---
 
-## Release Signing Setup (Maintainer One-Time Setup)
-
-Windows auto-updates are signed with Ed25519 (via vendored Monocypher) during `.github/workflows/release.yml` and verified against the public key compiled into `src/engines/update_pubkey.c`. Unconfigured builds fail closed and reject unsigned updates.
-
-1. Build the signing tool and generate a fresh Ed25519 keypair:
-   ```sh
-   make BUILD=release sign-tool
-   ./build/linux-release/rata-sign keygen
-   ```
-2. Store the printed 64-character hex **private signing seed** ONLY in the GitHub repository secret named `RATA_UPDATE_SIGNING_KEY` (Settings -> Secrets and variables -> Actions -> New repository secret, or `gh secret set RATA_UPDATE_SIGNING_KEY`). **Never commit the private seed.**
-3. Paste the printed `RATA_UPDATE_ED25519_PUBKEY` 32-byte array into `src/engines/update_pubkey.c` and commit it to `main`.
-4. Tagging `vX.Y.Z` (matching `VERSION` and `CHANGELOG.md`) will verify that `RATA_UPDATE_SIGNING_KEY` matches `update_pubkey.c`, publish the GitHub Release, sign `update-manifest.txt`, and advance the `stable` branch.
-
----
-
 ## Building from Source
 
-### NixOS
+### NixOS / Nix
 ```sh
 nix develop
 make check                # Layering checks + unit tests + parser fuzz tests (ASan + UBSan)
@@ -114,6 +94,7 @@ make install PREFIX="$HOME/.local"
 ```
 
 ### Windows 11 (MSYS2 MinGW 64-bit)
+Open an **MSYS2 MINGW64** shell:
 ```sh
 pacman -S mingw-w64-x86_64-gcc mingw-w64-x86_64-binutils make curl unzip
 curl -fsSL -o raylib.zip https://github.com/raysan5/raylib/releases/download/5.5/raylib-5.5_win64_mingw-w64.zip
@@ -122,6 +103,28 @@ RAYLIB_DIR=deps/raylib-5.5_win64_mingw-w64 make BUILD=release
 make BUILD=release test fuzz-test
 ```
 
-## Architecture & Portability
+---
 
-See [AGENTS.md](AGENTS.md) for the complete C11 portability, plain-C-ABI, strict layering (`core -> engines -> ui -> app`), arena ownership, packaging, and testing contract.
+## Release Signing Setup (Maintainer One-Time Setup)
+
+Windows auto-updates are signed with Ed25519 (via vendored Monocypher) during `.github/workflows/release.yml` and verified against the public key compiled into `src/engines/update_pubkey.c`. Unconfigured builds fail closed and reject unsigned updates.
+
+1. Inside a cloned checkout on **NixOS** (`nix develop`) or **Windows MSYS2 MINGW64**, build `rata-sign` and generate a fresh Ed25519 keypair:
+   ```sh
+   # On NixOS:
+   nix develop -c sh -c 'make BUILD=release sign-tool && ./build/linux-release/rata-sign keygen'
+
+   # Or on Linux / MSYS2 MINGW64:
+   make BUILD=release sign-tool
+   ./build/linux-release/rata-sign keygen   # (.exe on Windows)
+   ```
+2. Store the printed 64-character hex **private signing seed** ONLY in the GitHub repository secret named `RATA_UPDATE_SIGNING_KEY` (Settings -> Secrets and variables -> Actions -> New repository secret, or `gh secret set RATA_UPDATE_SIGNING_KEY`). **Never commit the private seed.**
+3. Paste the printed `RATA_UPDATE_ED25519_PUBKEY` 32-byte array into `src/engines/update_pubkey.c` and commit it to `main`.
+4. Tagging `vX.Y.Z` (matching `VERSION` and `CHANGELOG.md`) verifies that `RATA_UPDATE_SIGNING_KEY` matches `update_pubkey.c`, publishes the signed `update-manifest.txt` and binaries to GitHub Releases, and fast-forwards `stable`.
+
+---
+
+## Architecture & License
+
+- **Architecture & Portability Contract**: see [AGENTS.md](AGENTS.md) for the strict ISO C11, plain-C-ABI, layering (`core -> engines -> ui -> app`), arena ownership, packaging, and testing rules.
+- **License**: Rata Workspace is released under the [MIT License](LICENSE). Bundled third-party components under `vendor/` are distributed under their respective permissive licenses (`raygui` — zlib; `JetBrains Mono NL` — SIL OFL 1.1; `Monocypher` — BSD-2-Clause / CC0).

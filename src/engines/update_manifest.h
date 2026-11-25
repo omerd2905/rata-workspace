@@ -26,7 +26,6 @@ typedef struct RataSemver {
  * Format v1:
  *   RATA_UPDATE_MANIFEST 1
  *   version=0.1.0
- *   asset_id=123456789
  *   size=1234567
  *   sha256=<64 lowercase hex>
  *   signature=<128 lowercase hex>
@@ -35,7 +34,6 @@ typedef struct RataUpdateManifest {
     uint32_t format_version;
     char version[RATA_UPDATE_VERSION_MAX];
     RataSemver semver;
-    uint64_t asset_id;
     uint64_t size_bytes;
     uint8_t sha256[RATA_SHA256_DIGEST_LEN];
     uint8_t signature[RATA_ED25519_SIG_LEN];
@@ -60,7 +58,7 @@ RataStatus update_manifest_format(const RataUpdateManifest *m,
                                   size_t *len_out);
 
 /* Builds the canonical domain-separated byte payload signed by Ed25519:
- *   "rata-update-v1\n<version>\n<asset_id>\n<size>\n<sha256_hex>\n"
+ *   "rata-update-v1\n<version>\n<size>\n<sha256_hex>\n"
  * Caller owns buf_out. */
 RataStatus update_manifest_signing_payload(const RataUpdateManifest *m,
                                            char *buf_out,

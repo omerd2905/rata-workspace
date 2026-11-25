@@ -132,26 +132,7 @@ static int cmd_pubkey(void) {
     return 0;
 }
 
-static bool parse_u64_arg(const char *s, uint64_t *out) {
-    if (s == NULL || s[0] == '\0') {
-        return false;
-    }
-    uint64_t v = 0u;
-    for (size_t i = 0u; s[i] != '\0'; ++i) {
-        if (s[i] < '0' || s[i] > '9') {
-            return false;
-        }
-        uint64_t d = (uint64_t)(s[i] - '0');
-        if (v > (UINT64_MAX - d) / 10u) {
-            return false;
-        }
-        v = v * 10u + d;
-    }
-    *out = v;
-    return v > 0u;
-}
-
-static int cmd_sign_manifest(const char *version, const char *asset_id_str, const char *file_path) {
+static int cmd_sign_manifest(const char *version, const char *file_path) {
     RataUpdateManifest m;
     memset(&m, 0, sizeof(m));
 
@@ -161,11 +142,6 @@ static int cmd_sign_manifest(const char *version, const char *asset_id_str, cons
         return 1;
     }
     snprintf(m.version, sizeof(m.version), "%s", version);
-
-    if (!parse_u64_arg(asset_id_str, &m.asset_id)) {
-        fprintf(stderr, "rata-sign: invalid asset_id '%s'.\n", asset_id_str);
-        return 1;
-    }
 
     RataStatus st = update_hash_file(file_path, &m.size_bytes, m.sha256);
     if (st != RATA_OK || m.size_bytes == 0u) {
@@ -196,7 +172,7 @@ static int cmd_sign_manifest(const char *version, const char *asset_id_str, cons
         return 1;
     }
 
-    /* Warn on stderr if compiled-in pubkey is configured and differs from signing key. */
+    /* Fail if compiled-in pubkey is configured and differs from signing key. */
     uint8_t compiled_pub[RATA_ED25519_PUBKEY_LEN];
     update_pubkey_get(compiled_pub);
     if (update_pubkey_is_configured(compiled_pub) &&
@@ -256,8 +232,7 @@ static int cmd_verify_manifest(const char *manifest_path, const char *file_path)
         fprintf(stderr, "rata-sign: verification FAILED: %s\n", rata_status_str(st));
         return 1;
     }
-    printf("rata-sign: VERIFIED v%s (asset_id=%" PRIu64 ", size=%" PRIu64 " bytes)\n",
-           m.version, m.asset_id, m.size_bytes);
+    printf("rata-sign: VERIFIED v%s (size=%" PRIu64 " bytes)\n", m.version, m.size_bytes);
     return 0;
 }
 
@@ -266,7 +241,7 @@ static void print_usage(void) {
             "Usage:\n"
             "  rata-sign keygen\n"
             "  rata-sign pubkey                       (reads seed from RATA_UPDATE_SIGNING_KEY or stdin)\n"
-            "  rata-sign sign-manifest <ver> <asset_id> <installer_path>\n"
+            "  rata-sign sign-manifest <ver> <installer_path>\n"
             "  rata-sign verify-manifest <manifest_path> <installer_path>\n");
 }
 
@@ -281,8 +256,8 @@ int main(int argc, char **argv) {
     if (strcmp(argv[1], "pubkey") == 0 && argc == 2) {
         return cmd_pubkey();
     }
-    if (strcmp(argv[1], "sign-manifest") == 0 && argc == 5) {
-        return cmd_sign_manifest(argv[2], argv[3], argv[4]);
+    if (strcmp(argv[1], "sign-manifest") == 0 && argc == 4) {
+        return cmd_sign_manifest(argv[2], argv[3]);
     }
     if (strcmp(argv[1], "verify-manifest") == 0 && argc == 4) {
         return cmd_verify_manifest(argv[2], argv[3]);

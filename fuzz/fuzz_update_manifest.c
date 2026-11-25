@@ -41,11 +41,11 @@ int main(void) {
         "",
         "RATA_UPDATE_MANIFEST 1\n",
         "RATA_UPDATE_MANIFEST 99\nversion=1.0.0\n",
-        "RATA_UPDATE_MANIFEST 1\nversion=0.1.0\nasset_id=123\nsize=456\n"
+        "RATA_UPDATE_MANIFEST 1\nversion=0.1.0\nsize=456\n"
         "sha256=0000000000000000000000000000000000000000000000000000000000000000\n"
         "signature=0000000000000000000000000000000000000000000000000000000000000000"
         "0000000000000000000000000000000000000000000000000000000000000000\n",
-        "RATA_UPDATE_MANIFEST 1\r\nversion=1.2.3\r\nasset_id=0\r\nsize=0\r\n",
+        "RATA_UPDATE_MANIFEST 1\r\nversion=1.2.3\r\nsize=0\r\n",
         "RATA_UPDATE_MANIFEST 0\nversion=0.1.0\n",
         "version=0.1.0\nunknown=foo\n"
     };

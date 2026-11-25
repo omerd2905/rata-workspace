@@ -45,7 +45,7 @@ jobs:
           make BUILD=release sign-tool
           # Verify signing seed derives the exact compiled-in public key in src/engines/update_pubkey.c
           printf 'verify-key-match' > "$RUNNER_TEMP/keycheck.bin"
-          ./build/linux-release/rata-sign sign-manifest "${{ steps.ver.outputs.version }}" 1 "$RUNNER_TEMP/keycheck.bin" > "$RUNNER_TEMP/keycheck.txt"
+          ./build/linux-release/rata-sign sign-manifest "${{ steps.ver.outputs.version }}" "$RUNNER_TEMP/keycheck.bin" > "$RUNNER_TEMP/keycheck.txt"
           ./build/linux-release/rata-sign verify-manifest "$RUNNER_TEMP/keycheck.txt" "$RUNNER_TEMP/keycheck.bin"
           rm -f "$RUNNER_TEMP/keycheck.bin" "$RUNNER_TEMP/keycheck.txt"
 
@@ -179,6 +179,7 @@ jobs:
           rm -rf build/windows-stage build/release-artifacts
           mkdir -p build/windows-stage/licenses build/release-artifacts
           cp build/windows-release/rata-workspace.exe build/windows-stage/
+          cp LICENSE build/windows-stage/licenses/LICENSE.txt
           cp "$RUNNER_TEMP/raylib-dl/raylib-5.5_win64_mingw-w64/LICENSE" build/windows-stage/licenses/raylib-LICENSE.txt
           cp vendor/raygui/LICENSE build/windows-stage/licenses/raygui-LICENSE.txt
           cp vendor/jetbrains-mono/OFL.txt build/windows-stage/licenses/jetbrains-mono-OFL.txt
@@ -211,7 +212,7 @@ jobs:
             build/release-artifacts/*.zip
 
   publish:
-    name: Publish GitHub Release, Sign Manifest, & Advance stable Branch
+    name: Sign Manifest, Publish GitHub Release, & Fast-Forward stable Branch
     needs: [ verify, build-linux, build-windows ]
     runs-on: ubuntu-latest
     steps:
@@ -226,9 +227,18 @@ jobs:
           path: dist-artifacts
           merge-multiple: true
 
-      - name: Generate SHA256SUMS and extract CHANGELOG release notes
+      - name: Sign update-manifest.txt, generate SHA256SUMS, and extract CHANGELOG notes
+        env:
+          RATA_UPDATE_SIGNING_KEY: ${{ secrets.RATA_UPDATE_SIGNING_KEY }}
         run: |
           VERSION="${{ needs.verify.outputs.version }}"
+          SETUP_PATH="dist-artifacts/rata-workspace-v${VERSION}-windows-x86_64-setup.exe"
+
+          make BUILD=release sign-tool
+          ./build/linux-release/rata-sign sign-manifest "$VERSION" "$SETUP_PATH" > dist-artifacts/update-manifest.txt
+          ./build/linux-release/rata-sign verify-manifest dist-artifacts/update-manifest.txt "$SETUP_PATH"
+          cat dist-artifacts/update-manifest.txt
+
           (cd dist-artifacts && sha256sum * > SHA256SUMS)
           cat dist-artifacts/SHA256SUMS
 
@@ -244,7 +254,7 @@ jobs:
           fi
           cat release_notes.md
 
-      - name: Publish GitHub Release
+      - name: Publish GitHub Release and fast-forward stable branch
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -254,57 +264,5 @@ jobs:
             --title "Rata Workspace $TAG" \
             --notes-file release_notes.md
 
-      - name: Sign update-manifest.txt and advance stable branch
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RATA_UPDATE_SIGNING_KEY: ${{ secrets.RATA_UPDATE_SIGNING_KEY }}
-        run: |
-          VERSION="${{ needs.verify.outputs.version }}"
-          TAG="${GITHUB_REF_NAME}"
-          SETUP_NAME="rata-workspace-v${VERSION}-windows-x86_64-setup.exe"
-          SETUP_PATH="dist-artifacts/${SETUP_NAME}"
-
-          ASSET_ID="$(gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" \
-            --jq ".assets[] | select(.name == \"${SETUP_NAME}\") | .id")"
-          if [ -z "$ASSET_ID" ]; then
-            echo "ERROR: Could not resolve GitHub asset ID for ${SETUP_NAME}"
-            exit 1
-          fi
-
-          make BUILD=release sign-tool
-          ./build/linux-release/rata-sign sign-manifest "$VERSION" "$ASSET_ID" "$SETUP_PATH" > "$RUNNER_TEMP/update-manifest.txt"
-          ./build/linux-release/rata-sign verify-manifest "$RUNNER_TEMP/update-manifest.txt" "$SETUP_PATH"
-          cat "$RUNNER_TEMP/update-manifest.txt"
-
-          # Advance stable branch in a clean clone (never force-pushes; tree == $TAG + update-manifest.txt)
-          STABLE_DIR="$RUNNER_TEMP/stable-repo"
-          rm -rf "$STABLE_DIR"
-          git clone --origin origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$STABLE_DIR"
-          cd "$STABLE_DIR"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          if git ls-remote --exit-code --heads origin stable >/dev/null 2>&1; then
-            git fetch origin stable "refs/tags/${TAG}:refs/tags/${TAG}"
-            git checkout -B stable origin/stable
-            if git merge-base --is-ancestor HEAD "$TAG"; then
-              git merge --ff-only "$TAG"
-            else
-              git merge --no-commit --no-ff -s ours "$TAG"
-              git rm -rf --quiet .
-              git checkout "$TAG" -- .
-            fi
-          else
-            git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
-            git checkout -B stable "$TAG"
-          fi
-
-          cp "$RUNNER_TEMP/update-manifest.txt" update-manifest.txt
-          git add -A
-          # Verify stable matches $TAG identically except update-manifest.txt
-          if [ -n "$(git diff --cached "$TAG" -- ':!update-manifest.txt')" ]; then
-            echo "ERROR: stable branch tree differs from tag $TAG outside update-manifest.txt!"
-            exit 1
-          fi
-          git commit -m "Release ${TAG} (signed update manifest)"
-          git push origin stable
+          git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
+          git push origin "refs/tags/${TAG}:refs/heads/stable"

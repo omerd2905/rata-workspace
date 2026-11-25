@@ -4,7 +4,6 @@
 #endif
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
-#include <wincred.h>
 #include <winhttp.h>
 #include <direct.h>
 #include <wchar.h>
@@ -26,14 +25,10 @@
 #define RATA_VERSION "0.1.0"
 #endif
 
-#define RATA_AUTH_ERR_MSG \
-    "GitHub token missing, expired or lacks access \xe2\x80\x94 run rata-workspace --set-token"
-
 #ifdef _WIN32
 
-#define RATA_CRED_TARGET       L"RataWorkspace/GitHubPAT"
-#define RATA_GITHUB_HOST       L"api.github.com"
-#define RATA_MANIFEST_PATH     L"/repos/omerd2905/rata-workspace/contents/update-manifest.txt?ref=stable"
+#define RATA_RELEASE_HOST      L"github.com"
+#define RATA_MANIFEST_URL_PATH L"/omerd2905/rata-workspace/releases/latest/download/update-manifest.txt"
 #define RATA_MAX_DOWNLOAD_SIZE (512ULL * 1024ULL * 1024ULL)
 
 struct AppUpdater {
@@ -83,6 +78,14 @@ static bool acp_to_wide(const char *src, wchar_t *dst, size_t dst_cap) {
     return n > 0;
 }
 
+static bool utf8_to_wide(const char *src, wchar_t *dst, size_t dst_cap) {
+    if (src == NULL || dst == NULL || dst_cap == 0u) {
+        return false;
+    }
+    int n = MultiByteToWideChar(CP_UTF8, 0, src, -1, dst, (int)dst_cap);
+    return n > 0;
+}
+
 static RataStatus ensure_config_dir(char *dir_out, size_t dir_cap) {
     RataStatus st = user_config_resolve_dir(true, NULL, NULL, getenv("APPDATA"), dir_out, dir_cap);
     if (st != RATA_OK) {
@@ -121,7 +124,6 @@ static bool config_file_path(const char *name, char *out, size_t cap) {
     return user_config_join_path(true, dir, name, out, cap) == RATA_OK;
 }
 
-/* Append diagnostic line to updater.log (NEVER pass tokens here!). */
 static void updater_log(const char *msg) {
     char path[RATA_PATH_MAX];
     if (!config_file_path("updater.log", path, sizeof(path))) {
@@ -154,55 +156,6 @@ static bool atomic_rename_file(const char *src, const char *dst) {
         return false;
     }
     return MoveFileExW(wsrc, wdst, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != FALSE;
-}
-
-static bool read_pat_from_cred_manager(char *token_out, size_t cap) {
-    if (token_out == NULL || cap < 2u) {
-        return false;
-    }
-    PCREDENTIALW pcred = NULL;
-    if (!CredReadW(RATA_CRED_TARGET, CRED_TYPE_GENERIC, 0, &pcred) || pcred == NULL) {
-        return false;
-    }
-    bool ok = false;
-    if (pcred->CredentialBlob != NULL && pcred->CredentialBlobSize > 0u &&
-        (size_t)pcred->CredentialBlobSize < cap) {
-        memcpy(token_out, pcred->CredentialBlob, (size_t)pcred->CredentialBlobSize);
-        token_out[pcred->CredentialBlobSize] = '\0';
-        ok = (token_out[0] != '\0');
-    }
-    if (pcred->CredentialBlob != NULL && pcred->CredentialBlobSize > 0u) {
-        SecureZeroMemory(pcred->CredentialBlob, pcred->CredentialBlobSize);
-    }
-    CredFree(pcred);
-    return ok;
-}
-
-static bool write_pat_to_cred_manager(const char *token) {
-    if (token == NULL || token[0] == '\0') {
-        return false;
-    }
-    size_t len = strlen(token);
-    if (len > 4096u) {
-        return false;
-    }
-    CREDENTIALW cred;
-    memset(&cred, 0, sizeof(cred));
-    cred.Type = CRED_TYPE_GENERIC;
-    cred.TargetName = (LPWSTR)RATA_CRED_TARGET;
-    cred.CredentialBlobSize = (DWORD)len;
-    cred.CredentialBlob = (LPBYTE)token;
-    cred.Persist = CRED_PERSIST_LOCAL_MACHINE;
-    cred.UserName = (LPWSTR)L"rata-workspace";
-    return CredWriteW(&cred, 0) != FALSE;
-}
-
-static bool utf8_to_wide(const char *src, wchar_t *dst, size_t dst_cap) {
-    if (src == NULL || dst == NULL || dst_cap == 0u) {
-        return false;
-    }
-    int n = MultiByteToWideChar(CP_UTF8, 0, src, -1, dst, (int)dst_cap);
-    return n > 0;
 }
 
 static HINTERNET open_winhttp_session(void) {
@@ -243,38 +196,15 @@ static bool query_http_status(HINTERNET hReq, DWORD *status_out) {
     return true;
 }
 
-static bool add_github_headers(HINTERNET hReq, const char *accept_val, const char *token) {
-    char narrow[1024];
-    wchar_t hdrs[1024];
-    int n = snprintf(narrow, sizeof(narrow),
-                     "Accept: %s\r\n"
-                     "X-GitHub-Api-Version: 2022-11-28\r\n"
-                     "Authorization: Bearer %s\r\n",
-                     accept_val, token);
-    if (n <= 0 || (size_t)n >= sizeof(narrow)) {
-        SecureZeroMemory(narrow, sizeof(narrow));
-        return false;
-    }
-    bool ok = false;
-    if (utf8_to_wide(narrow, hdrs, 1024u)) {
-        ok = WinHttpAddRequestHeaders(hReq, hdrs, (DWORD)-1L,
-                                      WINHTTP_ADDREQ_FLAG_ADD | WINHTTP_ADDREQ_FLAG_REPLACE) != FALSE;
-    }
-    SecureZeroMemory(narrow, sizeof(narrow));
-    SecureZeroMemory(hdrs, sizeof(hdrs));
-    return ok;
-}
-
 static RataStatus fetch_manifest_text(HINTERNET hSession,
-                                      const char *token,
                                       char *buf_out,
                                       size_t buf_cap,
                                       size_t *len_out) {
-    HINTERNET hConn = WinHttpConnect(hSession, RATA_GITHUB_HOST, INTERNET_DEFAULT_HTTPS_PORT, 0);
+    HINTERNET hConn = WinHttpConnect(hSession, RATA_RELEASE_HOST, INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (hConn == NULL) {
         return RATA_ERR_IO;
     }
-    HINTERNET hReq = WinHttpOpenRequest(hConn, L"GET", RATA_MANIFEST_PATH, NULL,
+    HINTERNET hReq = WinHttpOpenRequest(hConn, L"GET", RATA_MANIFEST_URL_PATH, NULL,
                                         WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                         WINHTTP_FLAG_SECURE);
     if (hReq == NULL) {
@@ -282,19 +212,17 @@ static RataStatus fetch_manifest_text(HINTERNET hSession,
         return RATA_ERR_IO;
     }
 
-    DWORD policy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+    /* Follow HTTPS->HTTPS release CDN redirects only; block any downgrade to HTTP. */
+    DWORD policy = WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP;
     (void)WinHttpSetOption(hReq, WINHTTP_OPTION_REDIRECT_POLICY, &policy, sizeof(policy));
 
     RataStatus st = RATA_ERR_IO;
-    if (add_github_headers(hReq, "application/vnd.github.raw", token) &&
-        WinHttpSendRequest(hReq, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+    if (WinHttpSendRequest(hReq, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
         WinHttpReceiveResponse(hReq, NULL)) {
         DWORD status = 0u;
         if (query_http_status(hReq, &status)) {
-            if (status == 401u || status == 403u) {
-                st = RATA_ERR_AUTH;
-            } else if (status == 404u) {
+            if (status == 404u) {
                 st = RATA_ERR_RANGE;
             } else if (status == 200u) {
                 size_t total = 0u;
@@ -333,32 +261,30 @@ static RataStatus fetch_manifest_text(HINTERNET hSession,
     return st;
 }
 
-/* Downloads release asset to tmp_path.
- * Handles GitHub API HTTP 302 redirect MANUALLY and strips the Authorization header
- * before connecting to the redirect host. */
-static RataStatus download_asset_to_file(HINTERNET hSession,
-                                         const char *token,
-                                         uint64_t asset_id,
-                                         uint64_t expected_size,
-                                         const char *tmp_path,
-                                         volatile LONG *cancel_flag) {
+static RataStatus download_installer_to_file(HINTERNET hSession,
+                                             const char *verified_version,
+                                             uint64_t expected_size,
+                                             const char *tmp_path,
+                                             volatile LONG *cancel_flag) {
     if (expected_size == 0u || expected_size > RATA_MAX_DOWNLOAD_SIZE) {
         return RATA_ERR_RANGE;
     }
 
-    char asset_path_narrow[160];
-    wchar_t asset_path[160];
-    snprintf(asset_path_narrow, sizeof(asset_path_narrow),
-             "/repos/omerd2905/rata-workspace/releases/assets/%" PRIu64, asset_id);
-    if (!utf8_to_wide(asset_path_narrow, asset_path, 160u)) {
+    char rel_narrow[256];
+    wchar_t rel_wide[256];
+    int n = snprintf(rel_narrow, sizeof(rel_narrow),
+                     "/omerd2905/rata-workspace/releases/download/v%s/"
+                     "rata-workspace-v%s-windows-x86_64-setup.exe",
+                     verified_version, verified_version);
+    if (n <= 0 || (size_t)n >= sizeof(rel_narrow) || !utf8_to_wide(rel_narrow, rel_wide, 256u)) {
         return RATA_ERR_RANGE;
     }
 
-    HINTERNET hConn = WinHttpConnect(hSession, RATA_GITHUB_HOST, INTERNET_DEFAULT_HTTPS_PORT, 0);
+    HINTERNET hConn = WinHttpConnect(hSession, RATA_RELEASE_HOST, INTERNET_DEFAULT_HTTPS_PORT, 0);
     if (hConn == NULL) {
         return RATA_ERR_IO;
     }
-    HINTERNET hReq = WinHttpOpenRequest(hConn, L"GET", asset_path, NULL,
+    HINTERNET hReq = WinHttpOpenRequest(hConn, L"GET", rel_wide, NULL,
                                         WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
                                         WINHTTP_FLAG_SECURE);
     if (hReq == NULL) {
@@ -366,104 +292,16 @@ static RataStatus download_asset_to_file(HINTERNET hSession,
         return RATA_ERR_IO;
     }
 
-    /* CRITICAL: disable automatic redirects so Authorization is NEVER forwarded. */
-    DWORD policy = WINHTTP_OPTION_REDIRECT_POLICY_NEVER;
+    DWORD policy = WINHTTP_OPTION_REDIRECT_POLICY_DISALLOW_HTTPS_TO_HTTP;
     (void)WinHttpSetOption(hReq, WINHTTP_OPTION_REDIRECT_POLICY, &policy, sizeof(policy));
-
-    if (!add_github_headers(hReq, "application/octet-stream", token) ||
-        !WinHttpSendRequest(hReq, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
-        !WinHttpReceiveResponse(hReq, NULL)) {
-        WinHttpCloseHandle(hReq);
-        WinHttpCloseHandle(hConn);
-        return RATA_ERR_IO;
-    }
+    (void)WinHttpSetTimeouts(hReq, 5000, 5000, 10000, 30000);
 
     DWORD status = 0u;
-    if (!query_http_status(hReq, &status)) {
-        WinHttpCloseHandle(hReq);
-        WinHttpCloseHandle(hConn);
-        return RATA_ERR_IO;
-    }
-
-    if (status == 401u || status == 403u) {
-        WinHttpCloseHandle(hReq);
-        WinHttpCloseHandle(hConn);
-        return RATA_ERR_AUTH;
-    }
-
-    HINTERNET dl_conn = hConn;
-    HINTERNET dl_req = hReq;
-
-    if (status == 301u || status == 302u || status == 303u || status == 307u || status == 308u) {
-        wchar_t loc[2048];
-        DWORD loc_bytes = sizeof(loc);
-        BOOL has_loc = WinHttpQueryHeaders(hReq, WINHTTP_QUERY_LOCATION,
-                                           WINHTTP_HEADER_NAME_BY_INDEX,
-                                           loc, &loc_bytes, WINHTTP_NO_HEADER_INDEX);
-        WinHttpCloseHandle(hReq);
-        WinHttpCloseHandle(hConn);
-        dl_req = NULL;
-        dl_conn = NULL;
-        if (!has_loc) {
-            return RATA_ERR_IO;
-        }
-
-        wchar_t host[256];
-        wchar_t url_path[2048];
-        wchar_t extra[2048];
-        URL_COMPONENTSW uc;
-        memset(&uc, 0, sizeof(uc));
-        uc.dwStructSize = sizeof(uc);
-        uc.lpszHostName = host;
-        uc.dwHostNameLength = (DWORD)(sizeof(host) / sizeof(host[0]));
-        uc.lpszUrlPath = url_path;
-        uc.dwUrlPathLength = (DWORD)(sizeof(url_path) / sizeof(url_path[0]));
-        uc.lpszExtraInfo = extra;
-        uc.dwExtraInfoLength = (DWORD)(sizeof(extra) / sizeof(extra[0]));
-        if (!WinHttpCrackUrl(loc, 0, 0, &uc)) {
-            return RATA_ERR_IO;
-        }
-        /* Refuse downgrade to plaintext HTTP on redirect. */
-        if (uc.nScheme != INTERNET_SCHEME_HTTPS || uc.dwHostNameLength == 0u) {
-            return RATA_ERR_VERIFY;
-        }
-
-        size_t plen = wcslen(url_path);
-        size_t elen = wcslen(extra);
-        if (plen + elen >= 4096u) {
-            return RATA_ERR_RANGE;
-        }
-        wchar_t full_path[4096];
-        memcpy(full_path, url_path, plen * sizeof(wchar_t));
-        memcpy(full_path + plen, extra, (elen + 1u) * sizeof(wchar_t));
-
-        dl_conn = WinHttpConnect(hSession, host, uc.nPort, 0);
-        if (dl_conn == NULL) {
-            return RATA_ERR_IO;
-        }
-        dl_req = WinHttpOpenRequest(dl_conn, L"GET", full_path, NULL,
-                                    WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES,
-                                    WINHTTP_FLAG_SECURE);
-        if (dl_req == NULL) {
-            WinHttpCloseHandle(dl_conn);
-            return RATA_ERR_IO;
-        }
-
-        /* No Authorization header on redirect request! Also disable further redirects. */
-        (void)WinHttpSetOption(dl_req, WINHTTP_OPTION_REDIRECT_POLICY, &policy, sizeof(policy));
-        (void)WinHttpSetTimeouts(dl_req, 5000, 5000, 10000, 30000);
-
-        if (!WinHttpSendRequest(dl_req, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
-                                WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
-            !WinHttpReceiveResponse(dl_req, NULL) ||
-            !query_http_status(dl_req, &status) ||
-            status != 200u) {
-            WinHttpCloseHandle(dl_req);
-            WinHttpCloseHandle(dl_conn);
-            return RATA_ERR_IO;
-        }
-    } else if (status != 200u) {
+    if (!WinHttpSendRequest(hReq, WINHTTP_NO_ADDITIONAL_HEADERS, 0,
+                            WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(hReq, NULL) ||
+        !query_http_status(hReq, &status) ||
+        status != 200u) {
         WinHttpCloseHandle(hReq);
         WinHttpCloseHandle(hConn);
         return RATA_ERR_IO;
@@ -471,8 +309,8 @@ static RataStatus download_asset_to_file(HINTERNET hSession,
 
     FILE *fp = fopen(tmp_path, "wb");
     if (fp == NULL) {
-        WinHttpCloseHandle(dl_req);
-        WinHttpCloseHandle(dl_conn);
+        WinHttpCloseHandle(hReq);
+        WinHttpCloseHandle(hConn);
         return RATA_ERR_IO;
     }
 
@@ -485,7 +323,7 @@ static RataStatus download_asset_to_file(HINTERNET hSession,
             break;
         }
         DWORD avail = 0u;
-        if (!WinHttpQueryDataAvailable(dl_req, &avail)) {
+        if (!WinHttpQueryDataAvailable(hReq, &avail)) {
             st = RATA_ERR_IO;
             break;
         }
@@ -494,7 +332,7 @@ static RataStatus download_asset_to_file(HINTERNET hSession,
         }
         DWORD to_read = (avail > (DWORD)sizeof(chunk)) ? (DWORD)sizeof(chunk) : avail;
         DWORD got = 0u;
-        if (!WinHttpReadData(dl_req, chunk, to_read, &got)) {
+        if (!WinHttpReadData(hReq, chunk, to_read, &got)) {
             st = RATA_ERR_IO;
             break;
         }
@@ -513,8 +351,8 @@ static RataStatus download_asset_to_file(HINTERNET hSession,
     }
 
     fclose(fp);
-    WinHttpCloseHandle(dl_req);
-    WinHttpCloseHandle(dl_conn);
+    WinHttpCloseHandle(hReq);
+    WinHttpCloseHandle(hConn);
 
     if (st != RATA_OK || total != expected_size) {
         delete_narrow_file(tmp_path);
@@ -554,7 +392,6 @@ static bool load_and_verify_pending(RataUpdateManifest *m_out,
     RataSemver cur;
     if (update_semver_parse(RATA_VERSION, &cur) != RATA_OK ||
         update_semver_compare(m.semver, cur) <= 0) {
-        /* Already upgraded to this version or newer: clean up staged files silently. */
         if (delete_if_stale_or_bad) {
             delete_narrow_file(txt_path);
             delete_narrow_file(exe_path_out);
@@ -625,15 +462,8 @@ static RataStatus run_check_and_stage(volatile LONG *cancel_flag,
         return RATA_ERR_VERIFY;
     }
 
-    char token[1024];
-    memset(token, 0, sizeof(token));
-    if (!read_pat_from_cred_manager(token, sizeof(token))) {
-        return RATA_ERR_AUTH;
-    }
-
     HINTERNET hSession = open_winhttp_session();
     if (hSession == NULL) {
-        SecureZeroMemory(token, sizeof(token));
         return RATA_ERR_IO;
     }
 
@@ -644,19 +474,14 @@ static RataStatus run_check_and_stage(volatile LONG *cancel_flag,
 
     char manifest_buf[4096];
     size_t manifest_len = 0u;
-    RataStatus st = fetch_manifest_text(hSession, token, manifest_buf, sizeof(manifest_buf), &manifest_len);
+    RataStatus st = fetch_manifest_text(hSession, manifest_buf, sizeof(manifest_buf), &manifest_len);
     if (st == RATA_ERR_RANGE) {
-        /* 404 on stable branch: no manifest published yet. */
+        /* 404 on latest release: no signed manifest published yet. */
         WinHttpCloseHandle(hSession);
-        SecureZeroMemory(token, sizeof(token));
         return RATA_OK;
     }
     if (st != RATA_OK) {
         WinHttpCloseHandle(hSession);
-        SecureZeroMemory(token, sizeof(token));
-        if (st == RATA_ERR_AUTH) {
-            updater_log("Manifest fetch failed with HTTP 401/403 (token invalid or lacks access).");
-        }
         return st;
     }
 
@@ -665,26 +490,22 @@ static RataStatus run_check_and_stage(volatile LONG *cancel_flag,
     if (st != RATA_OK) {
         updater_log("Rejected malformed update-manifest.txt from server.");
         WinHttpCloseHandle(hSession);
-        SecureZeroMemory(token, sizeof(token));
         return st;
     }
 
     if (update_manifest_verify_signature(&m, pubkey) != RATA_OK) {
         updater_log("Rejected update-manifest.txt: Ed25519 signature verification failed.");
         WinHttpCloseHandle(hSession);
-        SecureZeroMemory(token, sizeof(token));
         return RATA_ERR_VERIFY;
     }
 
     RataSemver cur;
     if (update_semver_parse(RATA_VERSION, &cur) != RATA_OK) {
         WinHttpCloseHandle(hSession);
-        SecureZeroMemory(token, sizeof(token));
         return RATA_ERR_FORMAT;
     }
     if (update_semver_compare(m.semver, cur) <= 0) {
         WinHttpCloseHandle(hSession);
-        SecureZeroMemory(token, sizeof(token));
         return RATA_OK;
     }
 
@@ -695,7 +516,6 @@ static RataStatus run_check_and_stage(volatile LONG *cancel_flag,
         strcmp(existing.version, m.version) == 0 &&
         memcmp(existing.sha256, m.sha256, sizeof(m.sha256)) == 0) {
         WinHttpCloseHandle(hSession);
-        SecureZeroMemory(token, sizeof(token));
         *staged_out = m;
         *has_update_out = true;
         return RATA_OK;
@@ -710,7 +530,6 @@ static RataStatus run_check_and_stage(volatile LONG *cancel_flag,
         !config_file_path("pending-update.exe", dst_exe, sizeof(dst_exe)) ||
         !config_file_path("pending-update.txt", dst_txt, sizeof(dst_txt))) {
         WinHttpCloseHandle(hSession);
-        SecureZeroMemory(token, sizeof(token));
         return RATA_ERR_IO;
     }
 
@@ -719,12 +538,11 @@ static RataStatus run_check_and_stage(volatile LONG *cancel_flag,
         fflush(stdout);
     }
 
-    st = download_asset_to_file(hSession, token, m.asset_id, m.size_bytes, tmp_exe, cancel_flag);
+    st = download_installer_to_file(hSession, m.version, m.size_bytes, tmp_exe, cancel_flag);
     WinHttpCloseHandle(hSession);
-    SecureZeroMemory(token, sizeof(token));
     if (st != RATA_OK) {
         if (st == RATA_ERR_VERIFY) {
-            updater_log("Downloaded installer rejected (unexpected size or downgrade attempt).");
+            updater_log("Downloaded installer rejected (unexpected byte size).");
         }
         return st;
     }
@@ -797,9 +615,6 @@ static DWORD WINAPI updater_thread_proc(LPVOID param) {
         u->snap.ready_version[0] = '\0';
         snprintf(u->snap.message, sizeof(u->snap.message),
                  "Up to date (v%s).", RATA_VERSION);
-    } else if (st == RATA_ERR_AUTH) {
-        u->snap.state = APP_UPD_AUTH_ERROR;
-        snprintf(u->snap.message, sizeof(u->snap.message), "%s", RATA_AUTH_ERR_MSG);
     } else if (manual) {
         /* Surface error only on explicit manual check; background network errors stay silent. */
         u->snap.state = APP_UPD_ERROR;
@@ -920,73 +735,6 @@ void app_updater_get_snapshot(AppUpdater *u, AppUpdateSnapshot *out) {
     LeaveCriticalSection(&u->lock);
 }
 
-int app_updater_cli_set_token(AppUpdater *u, int argc, char **argv) {
-    (void)u;
-    for (int i = 1; i < argc; ++i) {
-        if (strcmp(argv[i], "--set-token") != 0) {
-            fprintf(stderr,
-                    "Error: do not pass tokens on the command line.\n"
-                    "Run 'rata-workspace --set-token' with no extra arguments.\n");
-            fflush(stderr);
-            return 1;
-        }
-    }
-
-    fprintf(stdout,
-            "Enter GitHub fine-grained PAT (single repo, Contents: read-only)\n"
-            "Token (input hidden): ");
-    fflush(stdout);
-
-    HANDLE hin = GetStdHandle(STD_INPUT_HANDLE);
-    DWORD orig_mode = 0u;
-    bool has_console = (hin != NULL && hin != INVALID_HANDLE_VALUE &&
-                        GetConsoleMode(hin, &orig_mode) != FALSE);
-    if (has_console) {
-        (void)SetConsoleMode(hin, orig_mode & ~((DWORD)ENABLE_ECHO_INPUT));
-    }
-
-    char token[1024];
-    memset(token, 0, sizeof(token));
-    char *line = fgets(token, (int)sizeof(token), stdin);
-
-    if (has_console) {
-        (void)SetConsoleMode(hin, orig_mode);
-        fputc('\n', stdout);
-        fflush(stdout);
-    }
-
-    if (line == NULL) {
-        SecureZeroMemory(token, sizeof(token));
-        fprintf(stderr, "Error: failed to read token from input.\n");
-        fflush(stderr);
-        return 1;
-    }
-
-    size_t len = strlen(token);
-    while (len > 0u && (token[len - 1u] == '\n' || token[len - 1u] == '\r' ||
-                        token[len - 1u] == ' '  || token[len - 1u] == '\t')) {
-        token[--len] = '\0';
-    }
-    if (len == 0u) {
-        SecureZeroMemory(token, sizeof(token));
-        fprintf(stderr, "Error: empty token rejected.\n");
-        fflush(stderr);
-        return 1;
-    }
-
-    bool saved = write_pat_to_cred_manager(token);
-    SecureZeroMemory(token, sizeof(token));
-    if (!saved) {
-        fprintf(stderr, "Error: failed to store token in Windows Credential Manager.\n");
-        fflush(stderr);
-        return 1;
-    }
-
-    fprintf(stdout, "GitHub token stored securely in Windows Credential Manager.\n");
-    fflush(stdout);
-    return 0;
-}
-
 int app_updater_cli_update(AppUpdater *u) {
     if (u == NULL) {
         return 1;
@@ -994,11 +742,6 @@ int app_updater_cli_update(AppUpdater *u) {
     RataUpdateManifest staged;
     bool has_update = false;
     RataStatus st = run_check_and_stage(NULL, true, &staged, &has_update);
-    if (st == RATA_ERR_AUTH) {
-        fprintf(stderr, "%s\n", RATA_AUTH_ERR_MSG);
-        fflush(stderr);
-        return 1;
-    }
     if (st == RATA_ERR_VERIFY) {
         fprintf(stderr, "Error: update rejected (Ed25519 signature, size, or SHA-256 mismatch).\n");
         fflush(stderr);
@@ -1093,19 +836,6 @@ void app_updater_get_snapshot(AppUpdater *u, AppUpdateSnapshot *out) {
     out->supported = false;
     out->is_nix_store = (u != NULL) ? u->is_nix_store : false;
     out->state = APP_UPD_IDLE;
-}
-
-int app_updater_cli_set_token(AppUpdater *u, int argc, char **argv) {
-    (void)argc;
-    (void)argv;
-    if (u != NULL && u->is_nix_store) {
-        fprintf(stderr,
-                "--set-token is only used by the Windows auto-updater.\n"
-                "On Nix, update with: nix profile upgrade rata-workspace\n");
-    } else {
-        fprintf(stderr, "--set-token is only used by the Windows auto-updater.\n");
-    }
-    return 1;
 }
 
 int app_updater_cli_update(AppUpdater *u) {

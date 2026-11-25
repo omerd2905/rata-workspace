@@ -23,8 +23,7 @@ typedef enum RataStatus {
     RATA_ERR_IO = 9,
     RATA_ERR_FORMAT = 10,
     RATA_ERR_NEWER_VERSION = 11,
-    RATA_ERR_AUTH = 12,
-    RATA_ERR_VERIFY = 13
+    RATA_ERR_VERIFY = 12
 } RataStatus;
 
 /* Returns a static human-readable string for status. Caller does not free. */

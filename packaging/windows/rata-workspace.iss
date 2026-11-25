@@ -1,7 +1,7 @@
 ; Rata Workspace — Per-User Windows 11 Installer (Inno Setup 6)
 ; Compiles only in CI / release packaging; never linked into the app.
 ; Installs per-user without admin privileges and upgrades cleanly in place (fixed AppId).
-; Adds {app} to per-user HKCU PATH so `rata-workspace --update` / `--set-token` work from PowerShell.
+; Adds {app} to per-user HKCU PATH so `rata-workspace --update` / `--version` work from PowerShell.
 ; User settings and projects live in %APPDATA%\RataWorkspace and are never touched on upgrade/uninstall.
 
 #ifndef RATA_APP_VERSION

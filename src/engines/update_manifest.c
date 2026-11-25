@@ -142,7 +142,6 @@ RataStatus update_manifest_parse(const char *text, size_t text_len, RataUpdateMa
 
     bool saw_header = false;
     bool has_ver = false;
-    bool has_asset = false;
     bool has_size = false;
     bool has_sha = false;
     bool has_sig = false;
@@ -207,12 +206,6 @@ RataStatus update_manifest_parse(const char *text, size_t text_len, RataUpdateMa
                 return RATA_ERR_FORMAT;
             }
             has_ver = true;
-        } else if (klen == 8u && memcmp(line, "asset_id", 8u) == 0) {
-            if (has_asset || parse_u64_strict(val, vlen, &out->asset_id) != RATA_OK ||
-                out->asset_id == 0u) {
-                return RATA_ERR_FORMAT;
-            }
-            has_asset = true;
         } else if (klen == 4u && memcmp(line, "size", 4u) == 0) {
             if (has_size || parse_u64_strict(val, vlen, &out->size_bytes) != RATA_OK ||
                 out->size_bytes == 0u) {
@@ -234,7 +227,7 @@ RataStatus update_manifest_parse(const char *text, size_t text_len, RataUpdateMa
         }
     }
 
-    if (!saw_header || !has_ver || !has_asset || !has_size || !has_sha || !has_sig) {
+    if (!saw_header || !has_ver || !has_size || !has_sha || !has_sig) {
         return RATA_ERR_FORMAT;
     }
     return RATA_OK;
@@ -248,16 +241,15 @@ RataStatus update_manifest_signing_payload(const RataUpdateManifest *m,
         return RATA_ERR_INVALID_ARG;
     }
     RataSemver sv;
-    if (update_semver_parse(m->version, &sv) != RATA_OK ||
-        m->asset_id == 0u || m->size_bytes == 0u) {
+    if (update_semver_parse(m->version, &sv) != RATA_OK || m->size_bytes == 0u) {
         return RATA_ERR_INVALID_ARG;
     }
     char sha_hex[RATA_SHA256_HEX_LEN + 1u];
     sha256_to_hex(m->sha256, sha_hex);
 
     int n = snprintf(buf_out, buf_cap,
-                     "rata-update-v1\n%s\n%" PRIu64 "\n%" PRIu64 "\n%s\n",
-                     m->version, m->asset_id, m->size_bytes, sha_hex);
+                     "rata-update-v1\n%s\n%" PRIu64 "\n%s\n",
+                     m->version, m->size_bytes, sha_hex);
     if (n < 0 || (size_t)n >= buf_cap) {
         return RATA_ERR_RANGE;
     }
@@ -275,8 +267,7 @@ RataStatus update_manifest_format(const RataUpdateManifest *m,
         return RATA_ERR_INVALID_ARG;
     }
     RataSemver sv;
-    if (update_semver_parse(m->version, &sv) != RATA_OK ||
-        m->asset_id == 0u || m->size_bytes == 0u) {
+    if (update_semver_parse(m->version, &sv) != RATA_OK || m->size_bytes == 0u) {
         return RATA_ERR_INVALID_ARG;
     }
     char sha_hex[RATA_SHA256_HEX_LEN + 1u];
@@ -287,13 +278,11 @@ RataStatus update_manifest_format(const RataUpdateManifest *m,
     int n = snprintf(buf_out, buf_cap,
                      "RATA_UPDATE_MANIFEST %u\n"
                      "version=%s\n"
-                     "asset_id=%" PRIu64 "\n"
                      "size=%" PRIu64 "\n"
                      "sha256=%s\n"
                      "signature=%s\n",
                      (unsigned)RATA_UPDATE_MANIFEST_VERSION,
                      m->version,
-                     m->asset_id,
                      m->size_bytes,
                      sha_hex,
                      sig_hex);

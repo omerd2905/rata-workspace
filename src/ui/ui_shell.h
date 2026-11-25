@@ -18,8 +18,7 @@ typedef enum RataUpdateUiState {
     RATA_UPD_CHECKING = 1,
     RATA_UPD_UP_TO_DATE = 2,
     RATA_UPD_READY = 3,
-    RATA_UPD_AUTH_ERROR = 4,
-    RATA_UPD_ERROR = 5
+    RATA_UPD_ERROR = 4
 } RataUpdateUiState;
 
 typedef struct RataUpdateUiStatus {

@@ -562,7 +562,6 @@ static void test_update_manifest_and_ed25519(TestContext *t) {
     memset(&m, 0, sizeof(m));
     snprintf(m.version, sizeof(m.version), "0.2.0");
     m.semver = v020;
-    m.asset_id = 9876543210ULL;
     test_expect_true(t, update_hash_file(tmp_path, &m.size_bytes, m.sha256) == RATA_OK,
                      "hash tmp file", __LINE__);
     test_expect_true(t, m.size_bytes == (uint64_t)strlen(payload_data), "exact size", __LINE__);
@@ -577,7 +576,6 @@ static void test_update_manifest_and_ed25519(TestContext *t) {
     test_expect_true(t, update_manifest_parse(text, text_len, &parsed) == RATA_OK,
                      "parse formatted manifest", __LINE__);
     test_expect_true(t, strcmp(parsed.version, "0.2.0") == 0, "parsed version", __LINE__);
-    test_expect_true(t, parsed.asset_id == 9876543210ULL, "parsed asset_id", __LINE__);
     test_expect_true(t, parsed.size_bytes == m.size_bytes, "parsed size", __LINE__);
     test_expect_true(t, update_manifest_verify_signature(&parsed, rfc_pub) == RATA_OK,
                      "sig verifies", __LINE__);
@@ -598,11 +596,6 @@ static void test_update_manifest_and_ed25519(TestContext *t) {
     snprintf(tampered.version, sizeof(tampered.version), "0.2.1");
     test_expect_true(t, update_manifest_verify_signature(&tampered, rfc_pub) == RATA_ERR_VERIFY,
                      "tampered version rejected", __LINE__);
-
-    tampered = parsed;
-    tampered.asset_id += 1u;
-    test_expect_true(t, update_manifest_verify_signature(&tampered, rfc_pub) == RATA_ERR_VERIFY,
-                     "tampered asset_id rejected", __LINE__);
 
     tampered = parsed;
     tampered.size_bytes += 1u;
